@@ -1,11 +1,37 @@
 import { DRESS_CODE } from '@/lib/constants'
 import Divider from '@/components/Divider'
 
-const CATEGORIES = [
-  { label: 'Ninong', value: DRESS_CODE.ninong },
-  { label: 'Ninang', value: DRESS_CODE.ninang },
-  { label: 'Gentlemen', value: DRESS_CODE.gentlemen },
-  { label: 'Ladies', value: DRESS_CODE.ladies },
+type Swatch = { label: string; hex: string }
+type Category = {
+  label: string
+  lines: { sub?: string; text: string }[]
+  palette: Swatch[]
+}
+
+const CATEGORIES: Category[] = [
+  {
+    label: 'Ninong',
+    lines: [{ text: DRESS_CODE.ninong }],
+    palette: DRESS_CODE.palette.ninong,
+  },
+  {
+    label: 'Ninang',
+    lines: [{ text: DRESS_CODE.ninang }],
+    palette: DRESS_CODE.palette.ninang,
+  },
+  {
+    label: 'Entourage',
+    lines: [{ text: DRESS_CODE.entourage }],
+    palette: DRESS_CODE.palette.entourage,
+  },
+  {
+    label: 'Guests',
+    lines: [
+      { sub: 'Gentlemen', text: DRESS_CODE.gentlemen },
+      { sub: 'Ladies', text: DRESS_CODE.ladies },
+    ],
+    palette: DRESS_CODE.palette.guests,
+  },
 ]
 
 export default function DressCode() {
@@ -20,11 +46,37 @@ export default function DressCode() {
 
         <div className="grid sm:grid-cols-2 gap-4 mb-10">
           {CATEGORIES.map((cat) => (
-            <div key={cat.label} className="bg-white/10 border border-white/20 p-6">
-              <p className="font-body text-xs tracking-[0.3em] uppercase text-white/60 mb-2">
+            <div key={cat.label} className="bg-white/10 border border-white/20 p-6 flex flex-col gap-4">
+              <p className="font-body text-xs tracking-[0.3em] uppercase text-white/60">
                 {cat.label}
               </p>
-              <p className="font-body text-white text-lg leading-snug">{cat.value}</p>
+
+              <div className="space-y-2 flex-1">
+                {cat.lines.map((line, i) => (
+                  <div key={i}>
+                    {line.sub && (
+                      <p className="font-body text-[10px] tracking-[0.25em] uppercase text-white/40 mb-0.5">
+                        {line.sub}
+                      </p>
+                    )}
+                    <p className="font-body text-white text-base leading-snug">{line.text}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-3">
+                {cat.palette.map((swatch) => (
+                  <div key={swatch.label} className="flex flex-col items-center gap-1">
+                    <span
+                      className="w-7 h-7 rounded-full border border-white/30 block"
+                      style={{ backgroundColor: swatch.hex }}
+                    />
+                    <span className="font-body text-[10px] text-white/50 tracking-wide">
+                      {swatch.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
