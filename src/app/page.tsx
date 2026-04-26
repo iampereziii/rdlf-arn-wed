@@ -8,6 +8,7 @@ import Entourage from '@/components/Entourage'
 import Gifts from '@/components/Gifts'
 import RSVP from '@/components/RSVP'
 import Footer from '@/components/Footer'
+import FadeIn from '@/components/FadeIn'
 
 export default function Home() {
   return (
@@ -15,13 +16,13 @@ export default function Home() {
       <Navbar />
       <main>
         <Hero />
-        <Countdown />
-        <Gallery />
-        <EventDetails />
-        <DressCode />
-        <Entourage />
-        <Gifts />
-        <RSVP />
+        <FadeIn><Countdown /></FadeIn>
+        <FadeIn><Gallery /></FadeIn>
+        <FadeIn><EventDetails /></FadeIn>
+        <FadeIn><DressCode /></FadeIn>
+        <FadeIn><Entourage /></FadeIn>
+        <FadeIn><Gifts /></FadeIn>
+        <FadeIn><RSVP /></FadeIn>
       </main>
       <Footer />
     </>

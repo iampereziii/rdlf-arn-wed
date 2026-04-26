@@ -5,11 +5,12 @@ import Image from 'next/image'
 import { PHOTOS } from '@/lib/constants'
 import Divider from '@/components/Divider'
 
+const INITIAL_COUNT = 6
+
 export default function Gallery() {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const [expanded, setExpanded] = useState(false)
 
-  const INITIAL_COUNT = 6
   const visiblePhotos = expanded ? PHOTOS : PHOTOS.slice(0, INITIAL_COUNT)
   const hasMore = PHOTOS.length > INITIAL_COUNT
 
@@ -28,21 +29,26 @@ export default function Gallery() {
           </p>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
-            {visiblePhotos.map((filename, i) => (
-              <button
-                key={filename}
-                onClick={() => setLightboxSrc(`/photos/${filename}`)}
-                className="relative aspect-square overflow-hidden group focus:outline-none focus:ring-2 focus:ring-accent"
-                aria-label={`View photo ${i + 1}`}
-              >
-                <Image
-                  src={`/photos/${filename}`}
-                  alt={`Prenup photo ${i + 1}`}
-                  fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-              </button>
-            ))}
+            {visiblePhotos.map((filename, i) => {
+              const isFeatured = i % 7 === 0
+              return (
+                <button
+                  key={filename}
+                  onClick={() => setLightboxSrc(`/photos/${filename}`)}
+                  className={`relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-accent ${
+                    isFeatured ? 'col-span-2 aspect-[16/7]' : 'col-span-1 aspect-square'
+                  }`}
+                  aria-label={`View photo ${i + 1}`}
+                >
+                  <Image
+                    src={`/photos/${filename}`}
+                    alt={`Prenup photo ${i + 1}`}
+                    fill
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                </button>
+              )
+            })}
           </div>
         )}
 
