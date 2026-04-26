@@ -1,5 +1,6 @@
 import Navbar from '@/components/Navbar'
 import Hero from '@/components/Hero'
+import Countdown from '@/components/Countdown'
 import Gallery from '@/components/Gallery'
 import EventDetails from '@/components/EventDetails'
 import DressCode from '@/components/DressCode'
@@ -14,6 +15,7 @@ export default function Home() {
       <Navbar />
       <main>
         <Hero />
+        <Countdown />
         <Gallery />
         <EventDetails />
         <DressCode />

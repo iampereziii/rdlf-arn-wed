@@ -16,6 +16,7 @@ export const WEDDING = {
     mapUrl: 'https://maps.app.goo.gl/WUuY43a2Gr4vu2g2A',
   },
   rsvpUrl: 'https://forms.gle/FiBmViyzfbf1KhKy5',
+  weddingDateTime: new Date('2026-06-13T13:00:00+08:00'),
   rsvpDeadline: new Date('2026-05-10'),
   adultsOnly: true,
   pixiesetUrl: 'https://daronproject.pixieset.com/arianeandjun/',
