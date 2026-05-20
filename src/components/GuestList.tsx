@@ -1,13 +1,13 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   GUEST_SECTIONS,
-  LAST_UPDATED,
   getGuestStats,
   type GroupKind,
   type GuestSection,
 } from '@/lib/guestData'
+import { loadGuestSections } from '@/lib/guestSheets'
 
 const BADGE_LABEL: Record<GroupKind, string> = {
   couple: 'Couple',
@@ -22,6 +22,8 @@ const BADGE_CLASS: Record<GroupKind, string> = {
   individual: 'bg-accent/5 text-accent/70',
   review: 'bg-accent text-blush',
 }
+
+type SyncStatus = 'loading' | 'live' | 'fallback'
 
 function Chevron({ open }: { open: boolean }) {
   return (
@@ -43,22 +45,46 @@ function Chevron({ open }: { open: boolean }) {
 export default function GuestList() {
   const [query, setQuery] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  // Start from the static snapshot so there's content before the fetch lands.
+  const [data, setData] = useState<GuestSection[]>(GUEST_SECTIONS)
+  const [status, setStatus] = useState<SyncStatus>('loading')
+  const [syncedAt, setSyncedAt] = useState('')
+
+  const load = useCallback(async () => {
+    setStatus('loading')
+    try {
+      const sections = await loadGuestSections()
+      setData(sections)
+      setStatus('live')
+      setSyncedAt(new Date().toLocaleTimeString())
+    } catch {
+      // Sheet unreachable / unpublished — keep showing the snapshot.
+      setData(GUEST_SECTIONS)
+      setStatus('fallback')
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   const q = query.trim().toLowerCase()
-  const stats = getGuestStats()
+  const stats = getGuestStats(data)
 
   const sections = useMemo<GuestSection[]>(() => {
-    if (!q) return GUEST_SECTIONS
-    return GUEST_SECTIONS.map((section) => ({
-      ...section,
-      groups: section.groups
-        .map((group) => ({
-          ...group,
-          guests: group.guests.filter((g) => g.name.toLowerCase().includes(q)),
-        }))
-        .filter((group) => group.guests.length > 0),
-    })).filter((section) => section.groups.length > 0)
-  }, [q])
+    if (!q) return data
+    return data
+      .map((section) => ({
+        ...section,
+        groups: section.groups
+          .map((group) => ({
+            ...group,
+            guests: group.guests.filter((g) => g.name.toLowerCase().includes(q)),
+          }))
+          .filter((group) => group.guests.length > 0),
+      }))
+      .filter((section) => section.groups.length > 0)
+  }, [q, data])
 
   const statCards = [
     { value: stats.totalGuests, label: 'Total guests' },
@@ -67,14 +93,32 @@ export default function GuestList() {
     { value: stats.needsReview, label: 'Needs review' },
   ]
 
+  const statusText =
+    status === 'loading'
+      ? 'Syncing with Google Sheets…'
+      : status === 'live'
+        ? `Live from Google Sheets · synced ${syncedAt}`
+        : 'Offline — showing the saved snapshot'
+
   return (
     <main className="min-h-screen px-4 py-12 sm:py-16">
       <div className="mx-auto max-w-2xl">
-        <header className="mb-10 text-center">
+        <header className="mb-8 text-center">
           <h1 className="font-script text-5xl text-accent sm:text-6xl">Guest List</h1>
           <p className="mt-2 font-body text-xs uppercase tracking-[0.35em] text-accent/60">
             Jun &amp; Ariane · RSVP Responses
           </p>
+          <div className="mt-3 flex items-center justify-center gap-3">
+            <span className="font-body text-xs text-accent/55">{statusText}</span>
+            <button
+              type="button"
+              onClick={load}
+              disabled={status === 'loading'}
+              className="border border-accent/25 px-3 py-1 font-body text-[11px] uppercase tracking-[0.15em] text-accent/70 transition-colors hover:bg-accent/5 disabled:opacity-40"
+            >
+              Refresh
+            </button>
+          </div>
         </header>
 
         <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -207,8 +251,7 @@ export default function GuestList() {
         )}
 
         <p className="mt-10 text-center font-body text-xs leading-relaxed text-accent/45">
-          Source: Jun &amp; Ariane Wedding RSVP form responses · last updated{' '}
-          {LAST_UPDATED}.
+          Source: Jun &amp; Ariane Wedding RSVP form responses · Google Sheets.
           <br />
           Entries combining two names (e.g. &ldquo;A / B&rdquo;) represent two
           guests on one submission.

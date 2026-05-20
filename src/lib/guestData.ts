@@ -1,15 +1,14 @@
-// Wedding guest list — normalized, merged view of the two RSVP sheets.
+// Wedding guest list — types, curation config, and the offline fallback.
 //
-// The Google RSVP flow produces two sheets:
-//   File 1 — primary RSVP responses     -> source: 'primary'
-//   File 2 — "+1 guest" companion form  -> source: 'plus-one'
+// Live data is fetched at runtime from the two published RSVP sheets — see
+// guestSheets.ts. This file holds:
+//   - the shared types
+//   - FAMILY_GROUPS: curated family groupings (not derivable from the sheets)
+//   - GUEST_SECTIONS: a static snapshot used as the fallback if the live
+//     fetch fails (e.g. the sheet is offline or unpublished)
 //
-// This file is the integrated result of merging both. It is committed
-// static data: the site is a static export with no server runtime, and
-// RSVP closed 2026-05-10, so the list is frozen. To refresh, re-export
-// the sheets and regenerate this file.
-//
-// Phone numbers are intentionally omitted — this page drops contact PII.
+// Phone numbers are intentionally omitted everywhere — this page drops
+// contact PII.
 
 export type GuestSource = 'primary' | 'plus-one'
 
@@ -37,8 +36,33 @@ export type GuestSection = {
   groups: GuestGroup[]
 }
 
-/** Date this list was last reconciled against the source sheets. */
+/** Date the fallback snapshot below was last reconciled against the sheets. */
 export const LAST_UPDATED = '2026-05-21'
+
+// Curated family groupings. The RSVP sheets have no family/couple column, and
+// surname alone is unreliable — there are several unrelated "Domingo" guests.
+// So families are an explicit editorial list, matched (case-insensitively) by
+// full name against the individual RSVP sheet. A new RSVP not listed here
+// falls through to "Individual guests" until someone adds it here.
+//
+// Couples and shared-contact pairs are NOT curated — guestSheets.ts derives
+// those automatically from the +1 sheet and from shared email/phone values.
+export const FAMILY_GROUPS: { label: string; members: string[] }[] = [
+  { label: 'San Juan family', members: ['Osai San Juan', 'Denz San Juan'] },
+  {
+    label: 'Agregado family',
+    members: ['Emma Agregado', 'Gybel Agregado', 'Arnel Agregado'],
+  },
+  {
+    label: 'Perez family',
+    members: [
+      'Raul Perez Cory Perez',
+      'Antonio Ray J. Perez',
+      'Techie Perez / Chona Esposo',
+      'Fernando Perez',
+    ],
+  },
+]
 
 export const GUEST_SECTIONS: GuestSection[] = [
   {
