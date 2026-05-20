@@ -19,7 +19,7 @@ export default function RSVP() {
         <h2 className="font-script text-5xl text-white mb-3">RSVP</h2>
         <Divider inverted />
         <p className="font-body text-xs tracking-[0.4em] uppercase text-white/60 mb-10">
-          Kindly Respond by May 10, 2026
+          Kindly Respond by {WEDDING.rsvpDeadlineLabel}
         </p>
 
         {isOpen === null ? null : isOpen ? (

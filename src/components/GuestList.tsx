@@ -9,6 +9,9 @@ import {
 } from '@/lib/guestData'
 import { loadGuestSections } from '@/lib/guestSheets'
 
+// This is an internal admin page, so it uses a darker, higher-contrast
+// treatment than the guest-facing site — easier on the eyes for a
+// data-dense screen. Warm browns keep it in the wedding's color family.
 const BADGE_LABEL: Record<GroupKind, string> = {
   couple: 'Couple',
   family: 'Family',
@@ -17,10 +20,10 @@ const BADGE_LABEL: Record<GroupKind, string> = {
 }
 
 const BADGE_CLASS: Record<GroupKind, string> = {
-  couple: 'bg-accent/10 text-accent',
-  family: 'bg-mauve/30 text-accent',
-  individual: 'bg-accent/5 text-accent/70',
-  review: 'bg-accent text-blush',
+  couple: 'bg-[#c49a8a]/20 text-[#e7c6b8]',
+  family: 'bg-[#8b4a3a]/55 text-[#e7c6b8]',
+  individual: 'bg-white/5 text-[#c9a99b]',
+  review: 'bg-[#d9a48f] text-[#2a1a15]',
 }
 
 type SyncStatus = 'loading' | 'live' | 'fallback'
@@ -101,20 +104,22 @@ export default function GuestList() {
         : 'Offline — showing the saved snapshot'
 
   return (
-    <main className="min-h-screen px-4 py-12 sm:py-16">
+    <main className="min-h-screen bg-[#2a1a15] px-4 py-12 sm:py-16">
       <div className="mx-auto max-w-2xl">
         <header className="mb-8 text-center">
-          <h1 className="font-script text-5xl text-accent sm:text-6xl">Guest List</h1>
-          <p className="mt-2 font-body text-xs uppercase tracking-[0.35em] text-accent/60">
+          <h1 className="font-script text-5xl text-[#e7c6b8] sm:text-6xl">
+            Guest List
+          </h1>
+          <p className="mt-2 font-body text-xs uppercase tracking-[0.35em] text-[#c9a99b]">
             Jun &amp; Ariane · RSVP Responses
           </p>
           <div className="mt-3 flex items-center justify-center gap-3">
-            <span className="font-body text-xs text-accent/55">{statusText}</span>
+            <span className="font-body text-xs text-[#b59a8e]">{statusText}</span>
             <button
               type="button"
               onClick={load}
               disabled={status === 'loading'}
-              className="border border-accent/25 px-3 py-1 font-body text-[11px] uppercase tracking-[0.15em] text-accent/70 transition-colors hover:bg-accent/5 disabled:opacity-40"
+              className="border border-[#5a4038] px-3 py-1 font-body text-[11px] uppercase tracking-[0.15em] text-[#c9a99b] transition-colors hover:bg-white/5 disabled:opacity-40"
             >
               Refresh
             </button>
@@ -125,19 +130,19 @@ export default function GuestList() {
           {statCards.map((stat) => (
             <div
               key={stat.label}
-              className="border border-accent/15 bg-white/50 px-4 py-3 text-center"
+              className="border border-[#4a352d] bg-[#3a2620] px-4 py-3 text-center"
             >
-              <div className="font-body text-3xl font-semibold leading-none text-accent">
+              <div className="font-body text-3xl font-semibold leading-none text-[#f2e6df]">
                 {stat.value}
               </div>
-              <div className="mt-1.5 font-body text-[10px] uppercase tracking-[0.2em] text-accent/55">
+              <div className="mt-1.5 font-body text-[10px] uppercase tracking-[0.2em] text-[#b59a8e]">
                 {stat.label}
               </div>
             </div>
           ))}
         </div>
 
-        <div className="mb-8 flex items-center gap-2 border border-accent/20 bg-white/60 px-3">
+        <div className="mb-8 flex items-center gap-2 border border-[#4a352d] bg-[#3a2620] px-3">
           <svg
             width="15"
             height="15"
@@ -145,7 +150,7 @@ export default function GuestList() {
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
-            className="shrink-0 text-accent/40"
+            className="shrink-0 text-[#9c8077]"
             aria-hidden="true"
           >
             <circle cx="11" cy="11" r="7" />
@@ -157,14 +162,14 @@ export default function GuestList() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by name"
             aria-label="Search guests by name"
-            className="w-full bg-transparent py-2.5 font-body text-base text-accent outline-none placeholder:text-accent/40"
+            className="w-full bg-transparent py-2.5 font-body text-base text-[#f2e6df] outline-none placeholder:text-[#9c8077]"
           />
         </div>
 
         {sections.length > 0 ? (
           sections.map((section) => (
             <section key={section.title} className="mb-6">
-              <h2 className="mb-2 font-body text-[11px] uppercase tracking-[0.25em] text-accent/50">
+              <h2 className="mb-2 font-body text-[11px] uppercase tracking-[0.25em] text-[#b59a8e]">
                 {section.title}
               </h2>
 
@@ -173,7 +178,7 @@ export default function GuestList() {
                 return (
                   <div
                     key={group.label}
-                    className="mb-2 border border-accent/15 bg-white/50"
+                    className="mb-2 border border-[#4a352d] bg-[#3a2620]"
                   >
                     <button
                       type="button"
@@ -191,14 +196,14 @@ export default function GuestList() {
                       >
                         {BADGE_LABEL[group.kind]}
                       </span>
-                      <span className="flex-1 font-body text-base font-semibold text-accent">
+                      <span className="flex-1 font-body text-base font-semibold text-[#f2e6df]">
                         {group.label}
                       </span>
-                      <span className="font-body text-xs text-accent/55">
+                      <span className="font-body text-xs text-[#b59a8e]">
                         {group.guests.length}
                       </span>
                       {!q && (
-                        <span className="text-accent/50">
+                        <span className="text-[#b59a8e]">
                           <Chevron open={open} />
                         </span>
                       )}
@@ -209,28 +214,28 @@ export default function GuestList() {
                         {group.guests.map((guest, i) => (
                           <div
                             key={`${group.label}-${i}`}
-                            className="flex items-center gap-3 border-t border-accent/10 py-2.5"
+                            className="flex items-center gap-3 border-t border-[#4a352d] py-2.5"
                           >
                             <span
                               className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-body text-xs font-semibold ${
                                 guest.flag
-                                  ? 'bg-accent text-blush'
-                                  : 'bg-mauve/30 text-accent'
+                                  ? 'bg-[#d9a48f] text-[#2a1a15]'
+                                  : 'bg-[#4e3a32] text-[#e7c6b8]'
                               }`}
                             >
                               {guest.initials}
                             </span>
                             <div className="flex-1">
-                              <div className="font-body text-base leading-tight text-accent">
+                              <div className="font-body text-base leading-tight text-[#f2e6df]">
                                 {guest.name}
                               </div>
-                              <div className="font-body text-xs text-accent/50">
+                              <div className="font-body text-xs text-[#a98d80]">
                                 {guest.source === 'plus-one'
                                   ? '+1 guest'
                                   : 'RSVP submission'}
                               </div>
                               {guest.flag && (
-                                <div className="mt-1 border-l-2 border-accent pl-2 font-body text-[11px] text-accent">
+                                <div className="mt-1 border-l-2 border-[#d9a48f] pl-2 font-body text-[11px] text-[#e7c6b8]">
                                   {guest.flag}
                                 </div>
                               )}
@@ -245,12 +250,12 @@ export default function GuestList() {
             </section>
           ))
         ) : (
-          <div className="py-16 text-center font-body text-accent/55">
+          <div className="py-16 text-center font-body text-[#b59a8e]">
             No guests match &ldquo;{query}&rdquo;
           </div>
         )}
 
-        <p className="mt-10 text-center font-body text-xs leading-relaxed text-accent/45">
+        <p className="mt-10 text-center font-body text-xs leading-relaxed text-[#9c8077]">
           Source: Jun &amp; Ariane Wedding RSVP form responses · Google Sheets.
           <br />
           Entries combining two names (e.g. &ldquo;A / B&rdquo;) represent two

@@ -17,7 +17,9 @@ export const WEDDING = {
   },
   rsvpUrl: 'https://forms.gle/FiBmViyzfbf1KhKy5',
   weddingDateTime: new Date('2026-06-13T13:00:00+08:00'),
-  rsvpDeadline: new Date('2026-05-10'),
+  rsvpDeadline: new Date('2026-05-31T23:59:59+08:00'),
+  // Human-readable form of rsvpDeadline — keep in sync with the date above.
+  rsvpDeadlineLabel: 'May 31, 2026',
   adultsOnly: true,
   pixiesetUrl: 'https://daronproject.pixieset.com/arianeandjun/',
   // Set to a filename in public/video/ when the save-the-date video is ready.
