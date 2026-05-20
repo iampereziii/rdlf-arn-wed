@@ -9,6 +9,7 @@
 //
 // Grouping is layered on here:
 //   - couples           → one row of the +1 sheet = one couple
+//   - combined entries  → "two people, one cell" rows split per COMBINED_ENTRIES
 //   - shared-contact     → auto-detected: 2+ different names sharing an
 //                          email or phone become a "Needs review" pair
 //   - duplicate          → auto-detected: same name + email twice = flagged
@@ -16,6 +17,7 @@
 //   - everyone else      → "Individual guests"
 
 import {
+  COMBINED_ENTRIES,
   FAMILY_GROUPS,
   type Guest,
   type GuestGroup,
@@ -135,7 +137,33 @@ async function fetchCsv(url: string): Promise<string[][]> {
 
 // --- normalization ---------------------------------------------------------
 
-type IndivRecord = { name: string; email: string; contact: string }
+type IndivRecord = {
+  name: string
+  email: string
+  contact: string
+  /** Set when this record was split out of a combined RSVP row. */
+  submissionId?: string
+}
+
+/** Expands combined RSVP rows ("two people, one cell") into one record per
+ *  person, tagging each with the shared submissionId. Other records pass
+ *  through unchanged. */
+function splitCombinedRecords(records: IndivRecord[]): IndivRecord[] {
+  const out: IndivRecord[] = []
+  for (const record of records) {
+    const combined = COMBINED_ENTRIES.find(
+      (c) => nameKey(c.combined) === nameKey(record.name),
+    )
+    if (!combined) {
+      out.push(record)
+      continue
+    }
+    for (const personName of combined.people) {
+      out.push({ ...record, name: personName, submissionId: combined.combined })
+    }
+  }
+  return out
+}
 
 /** +1 sheet → one couple group per row. */
 function buildCouples(rows: string[][]): GuestGroup[] {
@@ -206,18 +234,25 @@ export async function loadGuestSections(): Promise<GuestSection[]> {
   const couples = buildCouples(couplesRows)
   const { records, duplicateKeys } = buildIndividualRecords(indivRows)
 
+  // Split "two people, one cell" rows before any grouping runs.
+  const splitRecords = splitCombinedRecords(records)
+
   const toGuest = (r: IndivRecord): Guest => ({
     name: r.name,
     source: 'primary',
     initials: initialsOf(r.name),
     flag: duplicateKeys.has(dupKeyOf(r)) ? DUP_FLAG : undefined,
+    submissionId: r.submissionId,
   })
 
   // Shared-contact pairs: an email or phone used by 2+ *different* people.
+  // Combined-entry split records legitimately share contact info (they are one
+  // submission), so they are excluded from this detection.
   const inReview = new Set<IndivRecord>()
   const reviewGroups: GuestGroup[] = []
-  const byEmail = groupBy(records, (r) => r.email)
-  const byContact = groupBy(records, (r) => r.contact)
+  const reviewPool = splitRecords.filter((r) => !r.submissionId)
+  const byEmail = groupBy(reviewPool, (r) => r.email)
+  const byContact = groupBy(reviewPool, (r) => r.contact)
 
   const buckets = Array.from(byEmail.values()).concat(
     Array.from(byContact.values()),
@@ -240,7 +275,7 @@ export async function loadGuestSections(): Promise<GuestSection[]> {
   }
 
   // Families: curated, matched by name against whatever is left.
-  const remaining = records.filter((r) => !inReview.has(r))
+  const remaining = splitRecords.filter((r) => !inReview.has(r))
   const usedInFamily = new Set<IndivRecord>()
   const familyGroups: GuestGroup[] = []
 

@@ -211,37 +211,54 @@ export default function GuestList() {
 
                     {open && (
                       <div className="px-4 pb-1">
-                        {group.guests.map((guest, i) => (
-                          <div
-                            key={`${group.label}-${i}`}
-                            className="flex items-center gap-3 border-t border-[#4a352d] py-2.5"
-                          >
-                            <span
-                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-body text-xs font-semibold ${
-                                guest.flag
-                                  ? 'bg-[#d9a48f] text-[#2a1a15]'
-                                  : 'bg-[#4e3a32] text-[#e7c6b8]'
-                              }`}
+                        {group.guests.map((guest, i) => {
+                          const sharedWith = guest.submissionId
+                            ? group.guests
+                                .filter(
+                                  (g) =>
+                                    g.submissionId === guest.submissionId &&
+                                    g.name !== guest.name,
+                                )
+                                .map((g) => g.name)
+                            : []
+                          return (
+                            <div
+                              key={`${group.label}-${i}`}
+                              className="flex items-center gap-3 border-t border-[#4a352d] py-2.5"
                             >
-                              {guest.initials}
-                            </span>
-                            <div className="flex-1">
-                              <div className="font-body text-base leading-tight text-[#f2e6df]">
-                                {guest.name}
-                              </div>
-                              <div className="font-body text-xs text-[#a98d80]">
-                                {guest.source === 'plus-one'
-                                  ? '+1 guest'
-                                  : 'RSVP submission'}
-                              </div>
-                              {guest.flag && (
-                                <div className="mt-1 border-l-2 border-[#d9a48f] pl-2 font-body text-[11px] text-[#e7c6b8]">
-                                  {guest.flag}
+                              <span
+                                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-body text-xs font-semibold ${
+                                  guest.flag
+                                    ? 'bg-[#d9a48f] text-[#2a1a15]'
+                                    : 'bg-[#4e3a32] text-[#e7c6b8]'
+                                }`}
+                              >
+                                {guest.initials}
+                              </span>
+                              <div className="flex-1">
+                                <div className="font-body text-base leading-tight text-[#f2e6df]">
+                                  {guest.name}
                                 </div>
-                              )}
+                                <div className="font-body text-xs text-[#a98d80]">
+                                  {guest.source === 'plus-one'
+                                    ? '+1 guest'
+                                    : 'RSVP submission'}
+                                </div>
+                                {sharedWith.length > 0 && (
+                                  <div className="mt-1 font-body text-[11px] italic text-[#a98d80]">
+                                    Shares one RSVP submission with{' '}
+                                    {sharedWith.join(', ')}
+                                  </div>
+                                )}
+                                {guest.flag && (
+                                  <div className="mt-1 border-l-2 border-[#d9a48f] pl-2 font-body text-[11px] text-[#e7c6b8]">
+                                    {guest.flag}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
                   </div>
@@ -257,9 +274,6 @@ export default function GuestList() {
 
         <p className="mt-10 text-center font-body text-xs leading-relaxed text-[#9c8077]">
           Source: Jun &amp; Ariane Wedding RSVP form responses · Google Sheets.
-          <br />
-          Entries combining two names (e.g. &ldquo;A / B&rdquo;) represent two
-          guests on one submission.
         </p>
       </div>
     </main>

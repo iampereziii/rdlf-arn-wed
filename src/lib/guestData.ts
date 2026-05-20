@@ -15,7 +15,7 @@ export type GuestSource = 'primary' | 'plus-one'
 export type GroupKind = 'couple' | 'family' | 'individual' | 'review'
 
 export type Guest = {
-  /** Full name as submitted. Some rows combine two people ("A / B"). */
+  /** Full name. Combined "two people, one cell" rows are split before this. */
   name: string
   /** Which sheet the row came from. */
   source: GuestSource
@@ -23,6 +23,10 @@ export type Guest = {
   initials: string
   /** Set when the entry needs manual confirmation; shown as a warning note. */
   flag?: string
+  /** Set when this guest was split out of a combined RSVP row. All guests
+   *  from the same original row share this id — stats count the submission
+   *  once, and the UI shows a "shares submission" note. */
+  submissionId?: string
 }
 
 export type GuestGroup = {
@@ -40,10 +44,17 @@ export type GuestSection = {
 export const LAST_UPDATED = '2026-05-21'
 
 // Curated family groupings. The RSVP sheets have no family/couple column, and
-// surname alone is unreliable — there are several unrelated "Domingo" guests.
-// So families are an explicit editorial list, matched (case-insensitively) by
-// full name against the individual RSVP sheet. A new RSVP not listed here
-// falls through to "Individual guests" until someone adds it here.
+// surname alone is unreliable — so families are an explicit editorial list,
+// matched (case-insensitively) by full name against the individual RSVP sheet.
+// A new RSVP not listed here falls through to "Individual guests".
+//
+// INVARIANT — no "Domingo family". The Domingo guests (Keng, Jobelle,
+// Miguelito, Fritz, Paul Michael … Catalan) are unrelated people who happen to
+// share a surname. Do NOT add a Domingo family entry — that false grouping is
+// exactly the bug this curated list deliberately avoids.
+//
+// Perez members are listed as their POST-SPLIT names (see COMBINED_ENTRIES):
+// the combined "two people, one cell" rows are split before family matching.
 //
 // Couples and shared-contact pairs are NOT curated — guestSheets.ts derives
 // those automatically from the +1 sheet and from shared email/phone values.
@@ -56,11 +67,27 @@ export const FAMILY_GROUPS: { label: string; members: string[] }[] = [
   {
     label: 'Perez family',
     members: [
-      'Raul Perez Cory Perez',
+      'Raul Perez',
+      'Cory Perez',
       'Antonio Ray J. Perez',
-      'Techie Perez / Chona Esposo',
+      'Techie Perez',
+      'Chona Esposo',
       'Fernando Perez',
     ],
+  },
+]
+
+// Combined RSVP rows — a single sheet cell that actually names two people.
+// There is no delimiter we can rely on ("Raul Perez Cory Perez" has none at
+// all), so these are split by this explicit map rather than a parser. Each
+// split guest carries `submissionId` = the combined string, so stats count one
+// submission while the list shows two guests. If a new combined entry shows up
+// in the sheet, add a row here.
+export const COMBINED_ENTRIES: { combined: string; people: string[] }[] = [
+  { combined: 'Raul Perez Cory Perez', people: ['Raul Perez', 'Cory Perez'] },
+  {
+    combined: 'Techie Perez / Chona Esposo',
+    people: ['Techie Perez', 'Chona Esposo'],
   },
 ]
 
@@ -134,9 +161,31 @@ export const GUEST_SECTIONS: GuestSection[] = [
         label: 'Perez family',
         kind: 'family',
         guests: [
-          { name: 'Raul Perez / Cory Perez', source: 'primary', initials: 'RP' },
+          {
+            name: 'Raul Perez',
+            source: 'primary',
+            initials: 'RP',
+            submissionId: 'Raul Perez Cory Perez',
+          },
+          {
+            name: 'Cory Perez',
+            source: 'primary',
+            initials: 'CP',
+            submissionId: 'Raul Perez Cory Perez',
+          },
           { name: 'Antonio Ray J. Perez', source: 'primary', initials: 'AR' },
-          { name: 'Techie Perez / Chona Esposo', source: 'primary', initials: 'TP' },
+          {
+            name: 'Techie Perez',
+            source: 'primary',
+            initials: 'TP',
+            submissionId: 'Techie Perez / Chona Esposo',
+          },
+          {
+            name: 'Chona Esposo',
+            source: 'primary',
+            initials: 'CE',
+            submissionId: 'Techie Perez / Chona Esposo',
+          },
           {
             name: 'Fernando Perez',
             source: 'primary',
@@ -191,12 +240,26 @@ export type GuestStats = {
   needsReview: number
 }
 
-/** Derives summary stats from the data so they can never drift from the list. */
+/** Derives summary stats from the data so they can never drift from the list.
+ *  Guests split from one combined row (same submissionId) count as separate
+ *  guests but as a single RSVP submission. */
 export function getGuestStats(sections: GuestSection[] = GUEST_SECTIONS): GuestStats {
   const guests = sections.flatMap((s) => s.groups.flatMap((g) => g.guests))
+
+  const countedSubmissions = new Set<string>()
+  let submissions = 0
+  for (const g of guests) {
+    if (g.source !== 'primary') continue
+    if (g.submissionId) {
+      if (countedSubmissions.has(g.submissionId)) continue
+      countedSubmissions.add(g.submissionId)
+    }
+    submissions++
+  }
+
   return {
     totalGuests: guests.length,
-    submissions: guests.filter((g) => g.source === 'primary').length,
+    submissions,
     plusOnes: guests.filter((g) => g.source === 'plus-one').length,
     needsReview: guests.filter((g) => g.flag).length,
   }
