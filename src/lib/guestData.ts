@@ -48,10 +48,15 @@ export const LAST_UPDATED = '2026-05-21'
 // matched (case-insensitively) by full name against the individual RSVP sheet.
 // A new RSVP not listed here falls through to "Individual guests".
 //
-// INVARIANT — no "Domingo family". The Domingo guests (Keng, Jobelle,
+// NO "Domingo family" — still true. The Domingo guests (Keng, Jobelle,
 // Miguelito, Fritz, Paul Michael … Catalan) are unrelated people who happen to
-// share a surname. Do NOT add a Domingo family entry — that false grouping is
-// exactly the bug this curated list deliberately avoids.
+// share a surname, so they are not one household — do NOT add a Domingo family
+// entry here.
+//
+// This is NOT contradicted by the wedding-*side* grouping added at the bottom
+// of this file (groupBySide / a "Domingo side"). A side is a broad clan bucket
+// — everyone connected to the bride's family — not a household. A "Domingo
+// side" section is valid; a "Domingo family" group is still not. They coexist.
 //
 // Perez members are listed as their POST-SPLIT names (see COMBINED_ENTRIES):
 // the combined "two people, one cell" rows are split before family matching.
@@ -263,4 +268,118 @@ export function getGuestStats(sections: GuestSection[] = GUEST_SECTIONS): GuestS
     plusOnes: guests.filter((g) => g.source === 'plus-one').length,
     needsReview: guests.filter((g) => g.flag).length,
   }
+}
+
+// --- Wedding-side grouping --------------------------------------------------
+//
+// The /guests list is grouped into wedding *sides*. A guest's side is derived
+// from their name by whole-word surname match:
+//
+//   Perez   — the groom's paternal side
+//   Palad   — the groom's maternal side
+//   Domingo — the bride's side
+//   Guests  — anyone whose name matches none of the above (in-laws, +1s,
+//             friends). Per the feature brief, non-matching guests land here.
+//
+// Matching is whole-word and anywhere in the name, not just the last word:
+// Filipino names carry the mother's maiden surname as a middle name and often
+// a Jr./Sr./III suffix, so the "last word" is an unreliable surname. Catching a
+// middle name is correct for *side* purposes — it is a real family link.
+//
+// Limitation: a surname used as a given name (e.g. "Domingo" as a first name)
+// would be a false match. None exist in the current data; if one appears, add
+// an explicit override here.
+
+export type Side = 'Perez' | 'Palad' | 'Domingo' | 'Guests'
+
+/** Surname → side, for the three named sides. "Guests" is the implicit
+ *  fall-through for names matching none of these. */
+export const SIDE_SURNAMES: { side: Exclude<Side, 'Guests'>; surname: string }[] = [
+  { side: 'Perez', surname: 'Perez' },
+  { side: 'Palad', surname: 'Palad' },
+  { side: 'Domingo', surname: 'Domingo' },
+]
+
+/** Display order of side sections — "Guests" is always last. */
+export const SIDE_ORDER: readonly Side[] = ['Perez', 'Palad', 'Domingo', 'Guests']
+
+/** The side a single name belongs to, by whole-word surname match. */
+export function sideOfName(name: string): Side {
+  const lower = name.toLowerCase()
+  for (const { side, surname } of SIDE_SURNAMES) {
+    if (new RegExp(`\\b${surname.toLowerCase()}\\b`).test(lower)) return side
+  }
+  return 'Guests'
+}
+
+/** The side a multi-person group belongs to. Couples, families, and review
+ *  pairs move as a unit — the first guest with a matched side wins; a group
+ *  with no match falls to "Guests". */
+function sideOfGroup(group: GuestGroup): Side {
+  for (const guest of group.guests) {
+    const side = sideOfName(guest.name)
+    if (side !== 'Guests') return side
+  }
+  return 'Guests'
+}
+
+/** Regroups association-grouped sections (couples / families / individuals)
+ *  into wedding-side sections (Perez / Palad / Domingo / Guests).
+ *
+ *  - Couples, families, and review pairs stay intact and move as a unit.
+ *  - "individual" groups are split per guest — each individual is independent,
+ *    so one "Individuals" group is rebuilt per side.
+ *
+ *  Empty sides are omitted; section order follows SIDE_ORDER. */
+export function groupBySide(sections: GuestSection[]): GuestSection[] {
+  const groupsBySide = new Map<Side, GuestGroup[]>()
+  const individualsBySide = new Map<Side, Guest[]>()
+
+  const addGroup = (side: Side, group: GuestGroup) => {
+    const bucket = groupsBySide.get(side)
+    if (bucket) bucket.push(group)
+    else groupsBySide.set(side, [group])
+  }
+
+  for (const section of sections) {
+    for (const group of section.groups) {
+      if (group.kind === 'individual') {
+        for (const guest of group.guests) {
+          const side = sideOfName(guest.name)
+          const bucket = individualsBySide.get(side)
+          if (bucket) bucket.push(guest)
+          else individualsBySide.set(side, [guest])
+        }
+      } else {
+        addGroup(sideOfGroup(group), group)
+      }
+    }
+  }
+
+  // The rebuilt individuals group goes last within its side.
+  for (const [side, guests] of Array.from(individualsBySide.entries())) {
+    addGroup(side, { label: 'Individuals', kind: 'individual', guests })
+  }
+
+  const result: GuestSection[] = []
+  for (const side of SIDE_ORDER) {
+    const groups = groupsBySide.get(side)
+    if (groups && groups.length > 0) result.push({ title: side, groups })
+  }
+  return result
+}
+
+/** Guest headcount per side, for the attendance summary. Reads side-grouped
+ *  sections (the output of groupBySide), where each section title is a Side.
+ *  Always returns all four sides in SIDE_ORDER so a zero side still shows —
+ *  e.g. Palad before anyone on that side has RSVP'd. */
+export function getSideCounts(
+  sections: GuestSection[],
+): { side: Side; count: number }[] {
+  const counts = new Map<string, number>()
+  for (const section of sections) {
+    const total = section.groups.reduce((n, g) => n + g.guests.length, 0)
+    counts.set(section.title, (counts.get(section.title) ?? 0) + total)
+  }
+  return SIDE_ORDER.map((side) => ({ side, count: counts.get(side) ?? 0 }))
 }

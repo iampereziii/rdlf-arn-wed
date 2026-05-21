@@ -15,10 +15,14 @@
 //   - duplicate          → auto-detected: same name + email twice = flagged
 //   - families           → matched against FAMILY_GROUPS (curated)
 //   - everyone else      → "Individual guests"
+//
+// The association-grouped result is then regrouped into wedding *sides*
+// (Perez / Palad / Domingo / Guests) by groupBySide before it is returned.
 
 import {
   COMBINED_ENTRIES,
   FAMILY_GROUPS,
+  groupBySide,
   type Guest,
   type GuestGroup,
   type GuestSection,
@@ -314,5 +318,5 @@ export async function loadGuestSections(): Promise<GuestSection[]> {
       ],
     })
   }
-  return sections
+  return groupBySide(sections)
 }
