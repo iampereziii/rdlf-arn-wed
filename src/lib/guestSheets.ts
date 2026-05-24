@@ -41,7 +41,7 @@ const SHARED_FLAG = 'Shared email & number — confirm relationship'
 
 /** Minimal RFC-4180 CSV parser — handles quoted fields, escaped quotes, commas
  *  and newlines inside quotes. Avoids pulling in a dependency. */
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = []
   let row: string[] = []
   let field = ''
@@ -82,7 +82,7 @@ function parseCsv(text: string): string[][] {
 }
 
 /** Maps trimmed/lowercased header names to their column index. */
-function headerIndex(headerRow: string[]): Record<string, number | undefined> {
+export function headerIndex(headerRow: string[]): Record<string, number | undefined> {
   const idx: Record<string, number | undefined> = {}
   headerRow.forEach((h, i) => {
     const key = h.trim().toLowerCase().replace(/\s+/g, ' ')
@@ -91,14 +91,14 @@ function headerIndex(headerRow: string[]): Record<string, number | undefined> {
   return idx
 }
 
-function cell(row: string[], idx: number | undefined): string {
+export function cell(row: string[], idx: number | undefined): string {
   return idx === undefined ? '' : (row[idx] ?? '')
 }
 
 // --- helpers ---------------------------------------------------------------
 
 /** Trim + collapse internal whitespace. */
-function normName(s: string): string {
+export function normName(s: string): string {
   return s.trim().replace(/\s+/g, ' ')
 }
 
@@ -133,7 +133,7 @@ function groupBy<T>(items: T[], keyOf: (item: T) => string): Map<string, T[]> {
   return map
 }
 
-async function fetchCsv(url: string): Promise<string[][]> {
+export async function fetchCsv(url: string): Promise<string[][]> {
   const res = await fetch(url, { cache: 'no-store' })
   if (!res.ok) throw new Error(`Sheet fetch failed (${res.status})`)
   return parseCsv(await res.text())

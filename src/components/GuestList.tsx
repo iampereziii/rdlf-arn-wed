@@ -1,13 +1,28 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  derivedAffiliationOfGuest,
+  effectiveAffiliation,
+  getAffiliationCounts,
   getGuestStats,
   getSideCounts,
+  groupByAffiliation,
+  type Affiliation,
+  type AffiliationOverrides,
   type GroupKind,
   type GuestSection,
+  type OverrideAffiliation,
 } from '@/lib/guestData'
 import { loadGuestSections } from '@/lib/guestSheets'
+import {
+  copyToClipboard,
+  exportToTSV,
+  loadAffiliationsFromSheet,
+  loadLocalOverrides,
+  overridesEqual,
+  saveLocalOverrides,
+} from '@/lib/affiliations'
 
 // No static fallback — the guest list is live-only. Until the Google Sheets
 // sync confirms, the page holds no data and the sync gate withholds render.
@@ -33,6 +48,7 @@ type Theme = {
   faint: string // small guest sub-labels
   dimmed: string // footer / faintest text + icons
   accent: string // spinner / warning / flag accent
+  accentBg: string // accent as a background (override marker dot)
   refreshBtn: string // header buttons: border + text + hover
   input: string // search input text
   placeholder: string // search input placeholder
@@ -56,6 +72,7 @@ const THEMES: Record<ColorScheme, Theme> = {
     faint: 'text-[#a98d80]',
     dimmed: 'text-[#9c8077]',
     accent: 'text-[#d9a48f]',
+    accentBg: 'bg-[#d9a48f]',
     refreshBtn: 'border-[#5a4038] text-[#c9a99b] hover:bg-white/5',
     input: 'text-[#f2e6df]',
     placeholder: 'placeholder:text-[#9c8077]',
@@ -82,6 +99,7 @@ const THEMES: Record<ColorScheme, Theme> = {
     faint: 'text-[#9B7B6E]',
     dimmed: 'text-[#A98F83]',
     accent: 'text-[#B5654A]',
+    accentBg: 'bg-[#B5654A]',
     refreshBtn: 'border-[#D8B4A6] text-[#8B4A3A] hover:bg-[#8B4A3A]/5',
     input: 'text-[#42241B]',
     placeholder: 'placeholder:text-[#B29A8F]',
@@ -106,6 +124,13 @@ const BADGE_LABEL: Record<GroupKind, string> = {
 
 // localStorage key for the persisted light/dark choice.
 const STORAGE_KEY = 'guests-color-scheme'
+
+// localStorage key for the persisted grouping mode (side vs Groom / Bride).
+const GROUPING_STORAGE_KEY = 'guests-grouping-mode'
+
+// Side view = the four-side breakdown (Perez / Palad / Domingo / Guests).
+// Affiliation view = the Groom / Bride / Guests rollup.
+type GroupingMode = 'side' | 'affiliation'
 
 type SyncStatus = 'loading' | 'live' | 'fallback'
 
@@ -163,6 +188,49 @@ function MoonIcon() {
   )
 }
 
+// Shown when in Side view — the icon depicts the *target* state (Groom / Bride
+// rollup), mirroring the dark/light toggle that shows the icon you'd switch to.
+function GroomBrideIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="9" cy="13" r="5" />
+      <circle cx="15" cy="13" r="5" />
+    </svg>
+  )
+}
+
+// Shown when in Groom / Bride view — depicts the four-side grid you'd switch to.
+function SideGridIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="3" width="8" height="8" />
+      <rect x="13" y="3" width="8" height="8" />
+      <rect x="3" y="13" width="8" height="8" />
+      <rect x="13" y="13" width="8" height="8" />
+    </svg>
+  )
+}
+
 function Spinner({ t }: { t: Theme }) {
   return (
     <svg
@@ -202,6 +270,104 @@ function WarnIcon({ t }: { t: Theme }) {
       <path d="M12 9v4" />
       <path d="M12 17h.01" />
     </svg>
+  )
+}
+
+// --- Editorial override picker --------------------------------------------
+// Per ADR-0002 the picker is the *only* place where overrides are produced;
+// the affiliations Google Sheet only ever sees pasted output from Export.
+
+function OverrideDot({ t }: { t: Theme }) {
+  return (
+    <span
+      className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${t.accentBg}`}
+      aria-label="manually assigned"
+    />
+  )
+}
+
+function OverridePicker({
+  current,
+  hasOverride,
+  onSet,
+  onClear,
+  t,
+}: {
+  current: 'Groom' | 'Bride' | 'Guests'
+  hasOverride: boolean
+  onSet: (value: OverrideAffiliation) => void
+  onClear: () => void
+  t: Theme
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  // Close on outside click. Mousedown (not click) so the menu dismisses
+  // before any subsequent click on a parent collapsible row fires.
+  useEffect(() => {
+    if (!open) return
+    const onMouseDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    return () => document.removeEventListener('mousedown', onMouseDown)
+  }, [open])
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen((o) => !o)
+        }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Override affiliation"
+        className={`flex items-center gap-1.5 border ${t.refreshBtn} px-2 py-0.5 font-body text-[10px] uppercase tracking-[0.1em]`}
+      >
+        {hasOverride && <OverrideDot t={t} />}
+        <span>{current}</span>
+        <Chevron open={open} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          onClick={(e) => e.stopPropagation()}
+          className={`absolute right-0 top-full z-20 mt-1 min-w-[140px] ${t.panel} py-1`}
+        >
+          {(['Groom', 'Bride'] as const).map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onSet(opt)
+                setOpen(false)
+              }}
+              className={`block w-full px-3 py-1.5 text-left font-body text-xs ${t.bright} hover:bg-white/5`}
+            >
+              {opt}
+            </button>
+          ))}
+          {hasOverride && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onClear()
+                setOpen(false)
+              }}
+              className={`block w-full border-t ${t.panelBorder} px-3 py-1.5 text-left font-body text-xs ${t.muted} hover:bg-white/5`}
+            >
+              Reset to derived
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -322,21 +488,116 @@ export default function GuestList() {
   // the persisted choice is reconciled on mount below.
   const [mode, setMode] = useState<ColorScheme>('dark')
   const t = THEMES[mode]
+  // Side view is the default — preserves the page's current behavior for
+  // anyone who never opens the toggle. Reconciled from localStorage on mount.
+  const [groupingMode, setGroupingMode] = useState<GroupingMode>('side')
+
+  // Editorial override state (per ADR-0002).
+  //   - `overrides`: the picker's working state — also what gets rendered.
+  //     Mirrored to localStorage on every change so it survives reload.
+  //   - `sheetSnapshot`: what was fetched from the affiliations Sheet at
+  //     load time. Compared against `overrides` to detect unpublished
+  //     changes — taken once at load, never re-fetched mid-session.
+  //   - `adminMode`: gates picker visibility. Read from `?admin=1` once on
+  //     mount. The gate is UX-only — overrides applied to the rollup are
+  //     visible to everyone (they ARE the published state from the Sheet).
+  const [overrides, setOverrides] = useState<AffiliationOverrides>({})
+  const [sheetSnapshot, setSheetSnapshot] = useState<AffiliationOverrides>({})
+  const [adminMode, setAdminMode] = useState(false)
+  const [exportFeedback, setExportFeedback] = useState('')
+
+  // Read the admin gate once on mount.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setAdminMode(params.get('admin') === '1')
+  }, [])
 
   const load = useCallback(async () => {
     setStatus('loading')
     try {
-      const sections = await loadGuestSections()
+      const [sections, snapshot] = await Promise.all([
+        loadGuestSections(),
+        // Affiliations fetch can't fail the page — it returns {} on any
+        // problem. The picker still works locally even with no Sheet.
+        loadAffiliationsFromSheet(),
+      ])
       setData(sections)
+      setSheetSnapshot(snapshot)
+      // Seed localStorage from the Sheet only on first visit (key missing).
+      // Once the admin has touched localStorage — even to clear it — we
+      // preserve their working state across reloads.
+      const saved = loadLocalOverrides()
+      if (saved === null) {
+        setOverrides(snapshot)
+        saveLocalOverrides(snapshot)
+      } else {
+        setOverrides(saved)
+      }
       setStatus('live')
       setSyncedAt(new Date().toLocaleTimeString())
     } catch {
-      // Sheet unreachable / unpublished — gate the page; there is no snapshot
+      // Guest sheets unreachable — gate the page; there is no snapshot
       // to fall back to, so clear the data and let the sync gate take over.
       setData(EMPTY_SECTIONS)
       setStatus('fallback')
     }
   }, [])
+
+  // Picker handlers. Couples/families/review groups call setGroupOverride with
+  // all of the group's guest names; individual pickers pass one name. Per
+  // ADR-0002 (move-as-a-unit), each guest in a group gets the same entry.
+  const setGroupOverride = useCallback(
+    (guestNames: string[], value: OverrideAffiliation) => {
+      setOverrides((prev) => {
+        const next = { ...prev }
+        for (const name of guestNames) next[name] = value
+        saveLocalOverrides(next)
+        return next
+      })
+    },
+    [],
+  )
+
+  const clearGroupOverride = useCallback((guestNames: string[]) => {
+    setOverrides((prev) => {
+      const next = { ...prev }
+      for (const name of guestNames) delete next[name]
+      saveLocalOverrides(next)
+      return next
+    })
+  }, [])
+
+  const resetAllOverrides = useCallback(() => {
+    if (
+      !window.confirm(
+        "Clear all overrides locally? You'll need to Export and replace the affiliations Sheet to publish the cleared state.",
+      )
+    ) {
+      return
+    }
+    setOverrides({})
+    saveLocalOverrides({})
+  }, [])
+
+  const handleExport = useCallback(async () => {
+    const tsv = exportToTSV(overrides)
+    const ok = await copyToClipboard(tsv)
+    setExportFeedback(
+      ok
+        ? `Copied ${Object.keys(overrides).length} row(s). Paste into the affiliations Sheet (select all → delete → paste).`
+        : 'Copy failed — clipboard not available in this browser.',
+    )
+    window.setTimeout(() => setExportFeedback(''), 4000)
+  }, [overrides])
+
+  const hasUnpublishedChanges = useMemo(
+    () => !overridesEqual(overrides, sheetSnapshot),
+    [overrides, sheetSnapshot],
+  )
+  const hasAnyOverrides = useMemo(
+    () => Object.keys(overrides).length > 0,
+    [overrides],
+  )
 
   useEffect(() => {
     load()
@@ -353,8 +614,23 @@ export default function GuestList() {
     localStorage.setItem(STORAGE_KEY, mode)
   }, [mode])
 
+  // Reconcile the persisted grouping mode once on mount.
+  useEffect(() => {
+    const saved = localStorage.getItem(GROUPING_STORAGE_KEY)
+    if (saved === 'side' || saved === 'affiliation') setGroupingMode(saved)
+  }, [])
+
+  // Persist the grouping mode whenever it changes.
+  useEffect(() => {
+    localStorage.setItem(GROUPING_STORAGE_KEY, groupingMode)
+  }, [groupingMode])
+
   const toggleMode = useCallback(() => {
     setMode((m) => (m === 'dark' ? 'light' : 'dark'))
+  }, [])
+
+  const toggleGroupingMode = useCallback(() => {
+    setGroupingMode((m) => (m === 'side' ? 'affiliation' : 'side'))
   }, [])
 
   useEffect(() => {
@@ -365,11 +641,22 @@ export default function GuestList() {
 
   const q = query.trim().toLowerCase()
   const stats = getGuestStats(data)
+  // `data` is always side-grouped (groupBySide runs in loadGuestSections).
+  // In affiliation mode, roll it up one more level, applying any editorial
+  // overrides currently held in localStorage (per ADR-0002).
+  const groupedData = useMemo<GuestSection[]>(
+    () =>
+      groupingMode === 'affiliation'
+        ? groupByAffiliation(data, overrides)
+        : data,
+    [data, groupingMode, overrides],
+  )
   const sideCounts = getSideCounts(data)
+  const affiliationCounts = getAffiliationCounts(groupedData)
 
   const sections = useMemo<GuestSection[]>(() => {
-    if (!q) return data
-    return data
+    if (!q) return groupedData
+    return groupedData
       .map((section) => ({
         ...section,
         groups: section.groups
@@ -380,7 +667,7 @@ export default function GuestList() {
           .filter((group) => group.guests.length > 0),
       }))
       .filter((section) => section.groups.length > 0)
-  }, [q, data])
+  }, [q, groupedData])
 
   const statCards = [
     { value: stats.totalGuests, label: 'Total guests' },
@@ -418,6 +705,18 @@ export default function GuestList() {
             </button>
             <button
               type="button"
+              onClick={toggleGroupingMode}
+              aria-label={
+                groupingMode === 'side'
+                  ? 'Switch to Groom / Bride view'
+                  : 'Switch to four-side view'
+              }
+              className={`border ${t.refreshBtn} flex items-center justify-center px-2.5 py-1 transition-colors`}
+            >
+              {groupingMode === 'side' ? <GroomBrideIcon /> : <SideGridIcon />}
+            </button>
+            <button
+              type="button"
               onClick={toggleMode}
               aria-label={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
               className={`border ${t.refreshBtn} flex items-center justify-center px-2.5 py-1 transition-colors`}
@@ -425,6 +724,40 @@ export default function GuestList() {
               {mode === 'dark' ? <SunIcon /> : <MoonIcon />}
             </button>
           </div>
+
+          {adminMode && groupingMode === 'affiliation' && (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={handleExport}
+                className={`border ${t.refreshBtn} px-3 py-1 font-body text-[11px] uppercase tracking-[0.15em] transition-colors`}
+              >
+                Export ({Object.keys(overrides).length})
+              </button>
+              {hasAnyOverrides && (
+                <button
+                  type="button"
+                  onClick={resetAllOverrides}
+                  className={`border ${t.refreshBtn} px-3 py-1 font-body text-[11px] uppercase tracking-[0.15em] transition-colors`}
+                >
+                  Reset all
+                </button>
+              )}
+              {hasUnpublishedChanges && (
+                <span
+                  className={`flex items-center gap-1.5 border ${t.flagNote} px-2.5 py-1 font-body text-[10px] uppercase tracking-[0.15em]`}
+                >
+                  <OverrideDot t={t} />
+                  Unpublished
+                </span>
+              )}
+            </div>
+          )}
+          {exportFeedback && (
+            <p className={`mt-2 text-center font-body text-xs ${t.muted}`}>
+              {exportFeedback}
+            </p>
+          )}
         </header>
 
         {status === 'live' ? (
@@ -447,14 +780,23 @@ export default function GuestList() {
             </div>
 
             <div className="mb-8 flex flex-wrap justify-center gap-2">
-              {sideCounts.map(({ side, count }) => (
-                <span key={side} className={`flex items-center gap-2 ${t.panel} px-3 py-1.5`}>
-                  <span className={`font-body text-[10px] font-semibold uppercase tracking-[0.15em] ${t.primary}`}>
-                    {side}
-                  </span>
-                  <span className={`font-body text-xs ${t.muted}`}>{count}</span>
-                </span>
-              ))}
+              {groupingMode === 'side'
+                ? sideCounts.map(({ side, count }) => (
+                    <span key={side} className={`flex items-center gap-2 ${t.panel} px-3 py-1.5`}>
+                      <span className={`font-body text-[10px] font-semibold uppercase tracking-[0.15em] ${t.primary}`}>
+                        {side}
+                      </span>
+                      <span className={`font-body text-xs ${t.muted}`}>{count}</span>
+                    </span>
+                  ))
+                : affiliationCounts.map(({ affiliation, count }) => (
+                    <span key={affiliation} className={`flex items-center gap-2 ${t.panel} px-3 py-1.5`}>
+                      <span className={`font-body text-[10px] font-semibold uppercase tracking-[0.15em] ${t.primary}`}>
+                        {affiliation}
+                      </span>
+                      <span className={`font-body text-xs ${t.muted}`}>{count}</span>
+                    </span>
+                  ))}
             </div>
 
             <div className={`mb-8 flex items-center gap-2 ${t.panel} px-3`}>
@@ -497,6 +839,19 @@ export default function GuestList() {
                     // so a label-only key would collapse them together.
                     const groupKey = `${section.title}::${group.label}`
                     const open = q ? true : !collapsed[groupKey]
+                    // Overrides apply group-wide for couples/families/review
+                    // pairs; for Individuals the override is per-guest (shown
+                    // in the guest row, not on the group header).
+                    const groupHasOverride =
+                      group.kind !== 'individual' &&
+                      group.guests.some((g) => g.name in overrides)
+                    const showGroupPicker =
+                      adminMode &&
+                      groupingMode === 'affiliation' &&
+                      group.kind !== 'individual'
+                    const currentGroupAffiliation: Affiliation = showGroupPicker
+                      ? effectiveAffiliation(group, overrides)
+                      : 'Guests'
                     return (
                       <div key={groupKey} className={`mb-2 ${t.panel}`}>
                         <button
@@ -515,12 +870,29 @@ export default function GuestList() {
                           >
                             {BADGE_LABEL[group.kind]}
                           </span>
-                          <span className={`flex-1 font-body text-base font-semibold ${t.bright}`}>
-                            {group.label}
+                          <span className={`flex flex-1 items-center gap-2 font-body text-base font-semibold ${t.bright}`}>
+                            {groupHasOverride && <OverrideDot t={t} />}
+                            <span>{group.label}</span>
                           </span>
                           <span className={`font-body text-xs ${t.muted}`}>
                             {group.guests.length}
                           </span>
+                          {showGroupPicker && (
+                            <OverridePicker
+                              current={currentGroupAffiliation}
+                              hasOverride={groupHasOverride}
+                              onSet={(v) =>
+                                setGroupOverride(
+                                  group.guests.map((g) => g.name),
+                                  v,
+                                )
+                              }
+                              onClear={() =>
+                                clearGroupOverride(group.guests.map((g) => g.name))
+                              }
+                              t={t}
+                            />
+                          )}
                           {!q && (
                             <span className={t.muted}>
                               <Chevron open={open} />
@@ -540,6 +912,11 @@ export default function GuestList() {
                                     )
                                     .map((g) => g.name)
                                 : []
+                              const showGuestPicker =
+                                adminMode &&
+                                groupingMode === 'affiliation' &&
+                                group.kind === 'individual'
+                              const guestOverride = overrides[guest.name]
                               return (
                                 <div
                                   key={`${group.label}-${i}`}
@@ -573,6 +950,22 @@ export default function GuestList() {
                                       </div>
                                     )}
                                   </div>
+                                  {showGuestPicker && (
+                                    <OverridePicker
+                                      current={
+                                        guestOverride ??
+                                        derivedAffiliationOfGuest(guest.name)
+                                      }
+                                      hasOverride={!!guestOverride}
+                                      onSet={(v) =>
+                                        setGroupOverride([guest.name], v)
+                                      }
+                                      onClear={() =>
+                                        clearGroupOverride([guest.name])
+                                      }
+                                      t={t}
+                                    />
+                                  )}
                                 </div>
                               )
                             })}

@@ -217,3 +217,132 @@ export function getSideCounts(
   }
   return SIDE_ORDER.map((side) => ({ side, count: counts.get(side) ?? 0 }))
 }
+
+// --- Groom / Bride rollup --------------------------------------------------
+//
+// A two-side rollup over the four sides. The same guest data viewed at a
+// higher grain:
+//
+//   Perez + Palad → Groom   (both lines of the groom's family)
+//   Domingo       → Bride
+//   Guests        → Guests  (in-laws, +1s, and friends with no surname
+//                            match — kept as a third bucket rather than
+//                            force-assigned to a side)
+
+export type Affiliation = 'Groom' | 'Bride' | 'Guests'
+
+// Override values are restricted to Groom / Bride. There is no scenario for
+// explicitly overriding someone INTO "Guests" — "Guests" is the surname-derived
+// fallback, reached by clearing an override. Per ADR-0002.
+export type OverrideAffiliation = Extract<Affiliation, 'Groom' | 'Bride'>
+
+/** Map of guestName → override affiliation. Absent entries fall back to
+ *  surname-derivation. Names are matched via `normName` (trim + collapse
+ *  whitespace), case-sensitive. */
+export type AffiliationOverrides = Record<string, OverrideAffiliation>
+
+export const SIDE_TO_AFFILIATION: Record<Side, Affiliation> = {
+  Perez: 'Groom',
+  Palad: 'Groom',
+  Domingo: 'Bride',
+  Guests: 'Guests',
+}
+
+/** Surname-derived affiliation for a single guest, no overrides applied. */
+export function derivedAffiliationOfGuest(name: string): Affiliation {
+  return SIDE_TO_AFFILIATION[sideOfName(name)]
+}
+
+/** The effective affiliation for a group, applying overrides if present.
+ *  Move-as-a-unit rule: if any guest in the group has an override, that
+ *  override wins (in practice all guests in a group share the same override
+ *  because the picker sets them together — this also tolerates inconsistent
+ *  hand-edits in the Sheet). Otherwise the surname-derived side wins. */
+export function effectiveAffiliation(
+  group: GuestGroup,
+  overrides: AffiliationOverrides | undefined,
+): Affiliation {
+  if (overrides) {
+    for (const guest of group.guests) {
+      const override = overrides[guest.name]
+      if (override) return override
+    }
+  }
+  for (const guest of group.guests) {
+    const side = sideOfName(guest.name)
+    if (side !== 'Guests') return SIDE_TO_AFFILIATION[side]
+  }
+  return 'Guests'
+}
+
+/** Display order of affiliation sections — "Guests" is always last. */
+export const AFFILIATION_ORDER: readonly Affiliation[] = ['Groom', 'Bride', 'Guests']
+
+/** Rolls side-grouped sections (the output of groupBySide) up to Groom /
+ *  Bride / Guests. Couples, families, and review pairs move as a unit —
+ *  whichever side they were on; only Perez + Palad merge. Individuals
+ *  groups from both Perez and Palad sides combine into a single Groom
+ *  "Individuals" group. Empty affiliations are omitted.
+ *
+ *  Optional `overrides` re-routes groups (and individuals, per-guest) based
+ *  on admin-set affiliations, applied BEFORE bucketing. Surname-derivation
+ *  is the fallback when no override is present. */
+export function groupByAffiliation(
+  sideSections: GuestSection[],
+  overrides?: AffiliationOverrides,
+): GuestSection[] {
+  const groupsByAffiliation = new Map<Affiliation, GuestGroup[]>()
+  const individualsByAffiliation = new Map<Affiliation, Guest[]>()
+
+  for (const section of sideSections) {
+    for (const group of section.groups) {
+      if (group.kind === 'individual') {
+        // Individuals can be overridden per-guest.
+        for (const guest of group.guests) {
+          const override = overrides?.[guest.name]
+          const affiliation: Affiliation = override ?? derivedAffiliationOfGuest(guest.name)
+          const bucket = individualsByAffiliation.get(affiliation)
+          if (bucket) bucket.push(guest)
+          else individualsByAffiliation.set(affiliation, [guest])
+        }
+      } else {
+        // Non-individual groups move as a unit; overrides apply group-wide.
+        const affiliation = effectiveAffiliation(group, overrides)
+        const bucket = groupsByAffiliation.get(affiliation)
+        if (bucket) bucket.push(group)
+        else groupsByAffiliation.set(affiliation, [group])
+      }
+    }
+  }
+
+  for (const [affiliation, guests] of Array.from(individualsByAffiliation.entries())) {
+    const merged: GuestGroup = { label: 'Individuals', kind: 'individual', guests }
+    const bucket = groupsByAffiliation.get(affiliation)
+    if (bucket) bucket.push(merged)
+    else groupsByAffiliation.set(affiliation, [merged])
+  }
+
+  const result: GuestSection[] = []
+  for (const affiliation of AFFILIATION_ORDER) {
+    const groups = groupsByAffiliation.get(affiliation)
+    if (groups && groups.length > 0) result.push({ title: affiliation, groups })
+  }
+  return result
+}
+
+/** Guest headcount per affiliation. Reads affiliation-grouped sections
+ *  (the output of groupByAffiliation). Always returns all three buckets
+ *  in AFFILIATION_ORDER so a zero affiliation still shows. */
+export function getAffiliationCounts(
+  sections: GuestSection[],
+): { affiliation: Affiliation; count: number }[] {
+  const counts = new Map<string, number>()
+  for (const section of sections) {
+    const total = section.groups.reduce((n, g) => n + g.guests.length, 0)
+    counts.set(section.title, (counts.get(section.title) ?? 0) + total)
+  }
+  return AFFILIATION_ORDER.map((affiliation) => ({
+    affiliation,
+    count: counts.get(affiliation) ?? 0,
+  }))
+}
