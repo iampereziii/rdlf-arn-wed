@@ -1,5 +1,11 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(find c:/local-instance/wedding-website -path '*/node_modules/*' -prune -o -name '*.md' -print 2>/dev/null; echo '---TEMPLATES---'; find c:/Users/rodol/.claude -name 'discovery-doc.md' 2>/dev/null; find . -maxdepth 4 -name 'adr*' -o -maxdepth 4 -name '*feature-brief*' 2>/dev/null | grep -v node_modules)",
+      "Read(//c/Users/rodol/.claude/**)",
+      "Bash(find c:/Users/rodol/.claude -name 'discovery-doc.md' -o -name 'scoping-doc.md' 2>/dev/null | grep -i templ; echo '---'; ls c:/Users/rodol/.claude/skills/discover/ 2>/dev/null; echo '---ADR search---'; grep -rl 'ADR-0002' c:/local-instance/wedding-website --include='*.md' 2>/dev/null | grep -v node_modules)",
+      "Read(//c/local-instance/ais/skills/discover/**)"
+    ],
     "additionalDirectories": [
       "c:\\local-instance\\wedding-website\\src"
     ]

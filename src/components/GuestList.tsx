@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   derivedAffiliationOfGuest,
   effectiveAffiliation,
@@ -10,7 +10,6 @@ import {
   groupByAffiliation,
   type Affiliation,
   type AffiliationOverrides,
-  type GroupKind,
   type GuestSection,
   type OverrideAffiliation,
 } from '@/lib/guestData'
@@ -23,107 +22,27 @@ import {
   overridesEqual,
   saveLocalOverrides,
 } from '@/lib/affiliations'
+import {
+  BADGE_LABEL,
+  Chevron,
+  type ColorScheme,
+  COLOR_SCHEME_STORAGE_KEY,
+  MoonIcon,
+  OverrideDot,
+  OverridePicker,
+  Spinner,
+  SunIcon,
+  type Theme,
+  THEMES,
+  WarnIcon,
+} from '@/components/guestsShared'
 
 // No static fallback — the guest list is live-only. Until the Google Sheets
 // sync confirms, the page holds no data and the sync gate withholds render.
 const EMPTY_SECTIONS: GuestSection[] = []
 
-// This internal admin page supports a light/dark toggle. Dark is the default
-// data-dense admin treatment; light uses the wedding's invitation palette
-// (#FEF0EC / #8B4A3A / #C49A8A) so the page stays on-brand. Every color the
-// page renders comes from the active Theme — no hardcoded hex in the markup.
-
-type ColorScheme = 'dark' | 'light'
-
-type Theme = {
-  page: string // page background
-  panel: string // card / panel: border + background
-  panelBorder: string // bare border color (row separators)
-  overlay: string // sync-gate dimming overlay background
-  skeleton: string // skeleton placeholder fill
-  bright: string // strongest text (values, names)
-  primary: string // headings / accent text
-  secondary: string // subtitle text
-  muted: string // labels / status text
-  faint: string // small guest sub-labels
-  dimmed: string // footer / faintest text + icons
-  accent: string // spinner / warning / flag accent
-  accentBg: string // accent as a background (override marker dot)
-  refreshBtn: string // header buttons: border + text + hover
-  input: string // search input text
-  placeholder: string // search input placeholder
-  avatar: string // normal avatar background + text
-  avatarFlag: string // flagged avatar background + text
-  flagNote: string // flag note border + text
-  badge: Record<GroupKind, string>
-}
-
-const THEMES: Record<ColorScheme, Theme> = {
-  dark: {
-    page: 'bg-[#2a1a15]',
-    panel: 'border border-[#4a352d] bg-[#3a2620]',
-    panelBorder: 'border-[#4a352d]',
-    overlay: 'bg-[#2a1a15]/75',
-    skeleton: 'bg-[#4a352d]',
-    bright: 'text-[#f2e6df]',
-    primary: 'text-[#e7c6b8]',
-    secondary: 'text-[#c9a99b]',
-    muted: 'text-[#b59a8e]',
-    faint: 'text-[#a98d80]',
-    dimmed: 'text-[#9c8077]',
-    accent: 'text-[#d9a48f]',
-    accentBg: 'bg-[#d9a48f]',
-    refreshBtn: 'border-[#5a4038] text-[#c9a99b] hover:bg-white/5',
-    input: 'text-[#f2e6df]',
-    placeholder: 'placeholder:text-[#9c8077]',
-    avatar: 'bg-[#4e3a32] text-[#e7c6b8]',
-    avatarFlag: 'bg-[#d9a48f] text-[#2a1a15]',
-    flagNote: 'border-[#d9a48f] text-[#e7c6b8]',
-    badge: {
-      couple: 'bg-[#c49a8a]/20 text-[#e7c6b8]',
-      family: 'bg-[#8b4a3a]/55 text-[#e7c6b8]',
-      individual: 'bg-white/5 text-[#c9a99b]',
-      review: 'bg-[#d9a48f] text-[#2a1a15]',
-    },
-  },
-  light: {
-    page: 'bg-[#FEF0EC]',
-    panel: 'border border-[#E2C0B2] bg-[#FBE4DB]',
-    panelBorder: 'border-[#E2C0B2]',
-    overlay: 'bg-[#FEF0EC]/75',
-    skeleton: 'bg-[#E7C9BC]',
-    bright: 'text-[#42241B]',
-    primary: 'text-[#8B4A3A]',
-    secondary: 'text-[#9E5F4E]',
-    muted: 'text-[#8A6A5E]',
-    faint: 'text-[#9B7B6E]',
-    dimmed: 'text-[#A98F83]',
-    accent: 'text-[#B5654A]',
-    accentBg: 'bg-[#B5654A]',
-    refreshBtn: 'border-[#D8B4A6] text-[#8B4A3A] hover:bg-[#8B4A3A]/5',
-    input: 'text-[#42241B]',
-    placeholder: 'placeholder:text-[#B29A8F]',
-    avatar: 'bg-[#C49A8A] text-[#FEF0EC]',
-    avatarFlag: 'bg-[#B5654A] text-[#FEF0EC]',
-    flagNote: 'border-[#B5654A] text-[#8B4A3A]',
-    badge: {
-      couple: 'bg-[#C49A8A]/35 text-[#7A4030]',
-      family: 'bg-[#8B4A3A]/20 text-[#7A4030]',
-      individual: 'bg-[#8B4A3A]/[0.08] text-[#9E5F4E]',
-      review: 'bg-[#B5654A] text-[#FEF0EC]',
-    },
-  },
-}
-
-const BADGE_LABEL: Record<GroupKind, string> = {
-  couple: 'Couple',
-  family: 'Family',
-  individual: 'Individual',
-  review: 'Needs review',
-}
-
-// localStorage key for the persisted light/dark choice.
-const STORAGE_KEY = 'guests-color-scheme'
+// Theme, THEMES, BADGE_LABEL, and the persisted light/dark key live in
+// guestsShared.tsx so /guests and /seating share one palette (no drift).
 
 // localStorage key for the persisted grouping mode (side vs Groom / Bride).
 const GROUPING_STORAGE_KEY = 'guests-grouping-mode'
@@ -133,60 +52,6 @@ const GROUPING_STORAGE_KEY = 'guests-grouping-mode'
 type GroupingMode = 'side' | 'affiliation'
 
 type SyncStatus = 'loading' | 'live' | 'fallback'
-
-function Chevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      className={`transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
-      aria-hidden="true"
-    >
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  )
-}
-
-function SunIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
-    </svg>
-  )
-}
-
-function MoonIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" />
-    </svg>
-  )
-}
 
 // Shown when in Side view — the icon depicts the *target* state (Groom / Bride
 // rollup), mirroring the dark/light toggle that shows the icon you'd switch to.
@@ -228,146 +93,6 @@ function SideGridIcon() {
       <rect x="3" y="13" width="8" height="8" />
       <rect x="13" y="13" width="8" height="8" />
     </svg>
-  )
-}
-
-function Spinner({ t }: { t: Theme }) {
-  return (
-    <svg
-      width="28"
-      height="28"
-      viewBox="0 0 24 24"
-      fill="none"
-      className={`mx-auto animate-spin ${t.accent}`}
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" opacity="0.25" />
-      <path
-        d="M21 12a9 9 0 0 0-9-9"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-    </svg>
-  )
-}
-
-function WarnIcon({ t }: { t: Theme }) {
-  return (
-    <svg
-      width="28"
-      height="28"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={`mx-auto ${t.accent}`}
-      aria-hidden="true"
-    >
-      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
-    </svg>
-  )
-}
-
-// --- Editorial override picker --------------------------------------------
-// Per ADR-0002 the picker is the *only* place where overrides are produced;
-// the affiliations Google Sheet only ever sees pasted output from Export.
-
-function OverrideDot({ t }: { t: Theme }) {
-  return (
-    <span
-      className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${t.accentBg}`}
-      aria-label="manually assigned"
-    />
-  )
-}
-
-function OverridePicker({
-  current,
-  hasOverride,
-  onSet,
-  onClear,
-  t,
-}: {
-  current: 'Groom' | 'Bride' | 'Guests'
-  hasOverride: boolean
-  onSet: (value: OverrideAffiliation) => void
-  onClear: () => void
-  t: Theme
-}) {
-  const [open, setOpen] = useState(false)
-  const wrapRef = useRef<HTMLDivElement>(null)
-
-  // Close on outside click. Mousedown (not click) so the menu dismisses
-  // before any subsequent click on a parent collapsible row fires.
-  useEffect(() => {
-    if (!open) return
-    const onMouseDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onMouseDown)
-    return () => document.removeEventListener('mousedown', onMouseDown)
-  }, [open])
-
-  return (
-    <div ref={wrapRef} className="relative">
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          setOpen((o) => !o)
-        }}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Override affiliation"
-        className={`flex items-center gap-1.5 border ${t.refreshBtn} px-2 py-0.5 font-body text-[10px] uppercase tracking-[0.1em]`}
-      >
-        {hasOverride && <OverrideDot t={t} />}
-        <span>{current}</span>
-        <Chevron open={open} />
-      </button>
-      {open && (
-        <div
-          role="menu"
-          onClick={(e) => e.stopPropagation()}
-          className={`absolute right-0 top-full z-20 mt-1 min-w-[140px] ${t.panel} py-1`}
-        >
-          {(['Groom', 'Bride'] as const).map((opt) => (
-            <button
-              key={opt}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onSet(opt)
-                setOpen(false)
-              }}
-              className={`block w-full px-3 py-1.5 text-left font-body text-xs ${t.bright} hover:bg-white/5`}
-            >
-              {opt}
-            </button>
-          ))}
-          {hasOverride && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                onClear()
-                setOpen(false)
-              }}
-              className={`block w-full border-t ${t.panelBorder} px-3 py-1.5 text-left font-body text-xs ${t.muted} hover:bg-white/5`}
-            >
-              Reset to derived
-            </button>
-          )}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -605,13 +330,13 @@ export default function GuestList() {
 
   // Reconcile the persisted color scheme once on mount.
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY)
+    const saved = localStorage.getItem(COLOR_SCHEME_STORAGE_KEY)
     if (saved === 'light' || saved === 'dark') setMode(saved)
   }, [])
 
   // Persist the color scheme whenever it changes.
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, mode)
+    localStorage.setItem(COLOR_SCHEME_STORAGE_KEY, mode)
   }, [mode])
 
   // Reconcile the persisted grouping mode once on mount.
