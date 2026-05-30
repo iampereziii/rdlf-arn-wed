@@ -164,6 +164,36 @@ export function orphanedAssignments(
     .map(([name, table]) => ({ name, table }))
 }
 
+// --- Guest-facing lookup ---------------------------------------------------
+
+/** A guest's seating result: the matched name, their table, and tablemates. */
+export type GuestSeat = { name: string; table: number; tablemates: string[] }
+
+/** Finds seated guests whose name contains `query` (trim + collapse + lowercase
+ *  substring match), each with their table number and the other names at that
+ *  table. Returns [] for queries shorter than `minLen` (so a 1–2 char query
+ *  can't enumerate the chart). Results are sorted by table, then name. */
+export function findSeats(
+  query: string,
+  assignments: Assignments,
+  minLen = 3,
+): GuestSeat[] {
+  const q = normName(query).toLowerCase()
+  if (q.length < minLen) return []
+  const entries = Object.entries(assignments)
+  return entries
+    .filter(([name]) => name.toLowerCase().includes(q))
+    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+    .map(([name, table]) => ({
+      name,
+      table,
+      tablemates: entries
+        .filter(([n, t]) => t === table && n !== name)
+        .map(([n]) => n)
+        .sort((a, b) => a.localeCompare(b)),
+    }))
+}
+
 // --- Sheet read ------------------------------------------------------------
 
 /** Reads the seating Sheet (one tab, columns `type, key, value`) into tables +
