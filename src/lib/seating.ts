@@ -16,6 +16,7 @@
 
 import { cell, fetchCsv, headerIndex, normName } from './guestSheets'
 import { copyToClipboard } from './affiliations'
+import { saveRowsToSheet } from './sheetWrite'
 import type { GroupKind, Guest, GuestSection } from './guestData'
 
 export type { GroupKind }
@@ -62,17 +63,13 @@ export const SEATING_WRITE_TOKEN = 'random'
 /** True when the Apps Script write-back endpoint is configured. */
 export const seatingWriteEnabled = (): boolean => SEATING_WRITE_URL !== ''
 
-/** Posts the full seating dataset to the Apps Script web app, which whole-sheet
- *  replaces the seating Sheet. Returns true on a confirmed `{ ok: true }`.
- *
- *  Uses a `text/plain` body so the request stays CORS-"simple" (no preflight,
- *  which Apps Script web apps don't handle); the script reads the raw JSON from
- *  e.postData.contents. */
+/** Posts the full seating dataset to the seating Apps Script web app, which
+ *  whole-sheet replaces the seating Sheet. Rows use the combined `type,key,value`
+ *  schema. Returns true on a confirmed `{ ok: true }`. */
 export async function saveSeatingToSheet(
   tables: Table[],
   assignments: Assignments,
 ): Promise<boolean> {
-  if (!SEATING_WRITE_URL) return false
   const rows: (string | number)[][] = [['type', 'key', 'value']]
   for (const t of [...tables].sort((a, b) => a.number - b.number)) {
     rows.push(['table', t.number, t.capacity])
@@ -80,17 +77,7 @@ export async function saveSeatingToSheet(
   for (const name of Object.keys(assignments).sort((a, b) => a.localeCompare(b))) {
     rows.push(['assignment', name, assignments[name]])
   }
-  try {
-    const res = await fetch(SEATING_WRITE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ token: SEATING_WRITE_TOKEN, rows }),
-    })
-    const data = (await res.json().catch(() => null)) as { ok?: boolean } | null
-    return data?.ok === true
-  } catch {
-    return false
-  }
+  return saveRowsToSheet(SEATING_WRITE_URL, SEATING_WRITE_TOKEN, rows)
 }
 
 // localStorage keys for the picker's working state. Same convention as

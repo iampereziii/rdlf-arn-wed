@@ -13,6 +13,7 @@
 //     why this beats a server-side approach for a batch-publish workflow.
 
 import { cell, fetchCsv, headerIndex, normName } from './guestSheets'
+import { saveRowsToSheet } from './sheetWrite'
 import type { AffiliationOverrides, OverrideAffiliation } from './guestData'
 
 // Published-to-web CSV endpoint for the affiliations Sheet. Empty string
@@ -20,6 +21,34 @@ import type { AffiliationOverrides, OverrideAffiliation } from './guestData'
 // still works locally over surname-derived defaults.
 export const AFFILIATIONS_CSV =
   'https://docs.google.com/spreadsheets/d/e/2PACX-1vSzKaSlYTXgAJ5pDjmqa7ORniI1oGlVIwolvdp2fdhAu5IuXXDvKk-zu7DXImUSP7W3WjrYgEJnEtfr/pub?output=csv'
+
+// One-click write-back to the affiliations Sheet via its OWN Apps Script web app
+// (per ADR-0003) — a distinct deployment + token from seating, because Apps
+// Script binds to a single spreadsheet. Empty URL = not configured, so the UI
+// falls back to the clipboard Export motion. Typed as `string` so the config
+// check still typechecks once a non-empty literal is pasted in.
+//
+// SECURITY: public endpoint; the token ships in the client bundle (obfuscation,
+// not auth). Use a DIFFERENT token than seating so one leak doesn't expose both.
+export const AFFILIATIONS_WRITE_URL: string =
+  'https://script.google.com/macros/s/AKfycbxMwyoxF4yQcw7yNwyRkcAAAMbN1wRkJAeI79u4imCVaxcTuSYwmPFFZLVmKj-WG-Xz/exec'
+export const AFFILIATIONS_WRITE_TOKEN = 'vwRo8|GH+6M5'
+
+/** True when the affiliations write-back endpoint is configured. */
+export const affiliationsWriteEnabled = (): boolean => AFFILIATIONS_WRITE_URL !== ''
+
+/** Posts the overrides to the affiliations Apps Script web app, which whole-
+ *  sheet replaces the affiliations Sheet. Rows mirror exportToTSV: header +
+ *  one row per override, sorted by name. Returns true on `{ ok: true }`. */
+export async function saveAffiliationsToSheet(
+  map: AffiliationOverrides,
+): Promise<boolean> {
+  const rows: (string | number)[][] = [['guestName', 'affiliation']]
+  for (const name of Object.keys(map).sort((a, b) => a.localeCompare(b))) {
+    rows.push([name, map[name]])
+  }
+  return saveRowsToSheet(AFFILIATIONS_WRITE_URL, AFFILIATIONS_WRITE_TOKEN, rows)
+}
 
 // localStorage key for the picker's working state.
 //

@@ -15,11 +15,13 @@ import {
 } from '@/lib/guestData'
 import { loadGuestSections } from '@/lib/guestSheets'
 import {
+  affiliationsWriteEnabled,
   copyToClipboard,
   exportToTSV,
   loadAffiliationsFromSheet,
   loadLocalOverrides,
   overridesEqual,
+  saveAffiliationsToSheet,
   saveLocalOverrides,
 } from '@/lib/affiliations'
 import {
@@ -230,6 +232,8 @@ export default function GuestList() {
   const [sheetSnapshot, setSheetSnapshot] = useState<AffiliationOverrides>({})
   const [adminMode, setAdminMode] = useState(false)
   const [exportFeedback, setExportFeedback] = useState('')
+  const [saving, setSaving] = useState(false)
+  const writeEnabled = affiliationsWriteEnabled()
 
   // Read the admin gate once on mount.
   useEffect(() => {
@@ -312,6 +316,21 @@ export default function GuestList() {
         ? `Copied ${Object.keys(overrides).length} row(s). Paste into the affiliations Sheet (select all → delete → paste).`
         : 'Copy failed — clipboard not available in this browser.',
     )
+    window.setTimeout(() => setExportFeedback(''), 4000)
+  }, [overrides])
+
+  // One-click write-back via the affiliations Apps Script proxy (per ADR-0003).
+  // On success, advance the snapshot so the "Unpublished" badge clears.
+  const handleSave = useCallback(async () => {
+    setSaving(true)
+    const ok = await saveAffiliationsToSheet(overrides)
+    setSaving(false)
+    if (ok) {
+      setSheetSnapshot(overrides)
+      setExportFeedback('Saved to the affiliations Sheet.')
+    } else {
+      setExportFeedback('Save failed — check your connection, or use Export as a fallback.')
+    }
     window.setTimeout(() => setExportFeedback(''), 4000)
   }, [overrides])
 
@@ -452,6 +471,16 @@ export default function GuestList() {
 
           {adminMode && groupingMode === 'affiliation' && (
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              {writeEnabled && (
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving}
+                  className={`border ${t.refreshBtn} px-3 py-1 font-body text-[11px] uppercase tracking-[0.15em] transition-colors disabled:opacity-40`}
+                >
+                  {saving ? 'Saving…' : 'Save to Sheet'}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleExport}
