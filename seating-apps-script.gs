@@ -23,7 +23,7 @@
  */
 
 // Must match SEATING_WRITE_TOKEN in src/lib/seating.ts.
-const TOKEN = 'change-me';
+const TOKEN = '21>!Vg7oJYvO';
 
 // Blank = first/leftmost sheet tab. Set a name to target a specific tab.
 const SHEET_NAME = '';

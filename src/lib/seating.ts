@@ -58,7 +58,7 @@ export const SEATING_CSV =
 // Typed as `string` (not the literal) so config checks like `=== ''` typecheck.
 export const SEATING_WRITE_URL: string =
   'https://script.google.com/macros/s/AKfycbxc3XkH9HeTYQ2eUL5-8UuyqR2Y0NMfNc1M9JYWaGu3SZUYe_iOgzAaVNTeOCd3g6nS/exec'
-export const SEATING_WRITE_TOKEN = 'random'
+export const SEATING_WRITE_TOKEN = '21>!Vg7oJYvO'
 
 /** True when the Apps Script write-back endpoint is configured. */
 export const seatingWriteEnabled = (): boolean => SEATING_WRITE_URL !== ''
