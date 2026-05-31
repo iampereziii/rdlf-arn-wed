@@ -34,3 +34,33 @@ export async function saveRowsToSheet(
     return false
   }
 }
+
+/** POSTs `{ token, row, honeypot }` to an Apps Script `/exec` web app that
+ *  **appends** a single row to the bound Sheet (unlike `saveRowsToSheet`, which
+ *  whole-sheet replaces). Used by the native RSVP form — each submission is one
+ *  appended row, never a replace.
+ *
+ *  `honeypot` carries the value of the form's hidden anti-bot field; the Apps
+ *  Script drops the submission (and still reports `{ ok: true }`) when it is
+ *  non-empty, so bots see success while no row is written. Same `text/plain`
+ *  CORS-"simple" body as `saveRowsToSheet`. Returns false on missing URL,
+ *  network error, or any non-ok response. */
+export async function appendRowToSheet(
+  url: string,
+  token: string,
+  row: (string | number)[],
+  honeypot = '',
+): Promise<boolean> {
+  if (!url) return false
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ token, row, honeypot }),
+    })
+    const data = (await res.json().catch(() => null)) as { ok?: boolean } | null
+    return data?.ok === true
+  } catch {
+    return false
+  }
+}

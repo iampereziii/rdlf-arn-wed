@@ -4,8 +4,11 @@ import Divider from '@/components/Divider'
 type Swatch = { label: string; hex: string }
 type Category = {
   label: string
+  colorNote?: string
   lines: { sub?: string; text: string }[]
-  palette: Swatch[]
+  palette?: Swatch[]
+  hideSwatchLabels?: boolean
+  filler?: string
 }
 
 const CATEGORIES: Category[] = [
@@ -22,15 +25,17 @@ const CATEGORIES: Category[] = [
   {
     label: 'Entourage',
     lines: [{ text: DRESS_CODE.entourage }],
-    palette: DRESS_CODE.palette.entourage,
+    filler: DRESS_CODE.entourageFiller,
   },
   {
     label: 'Guests',
+    colorNote: DRESS_CODE.guestColor,
     lines: [
       { sub: 'Gentlemen', text: DRESS_CODE.gentlemen },
       { sub: 'Ladies', text: DRESS_CODE.ladies },
     ],
     palette: DRESS_CODE.palette.guests,
+    hideSwatchLabels: true,
   },
 ]
 
@@ -51,6 +56,12 @@ export default function DressCode() {
                 {cat.label}
               </p>
 
+              {cat.colorNote && (
+                <p className="font-body text-white text-xl italic leading-snug">
+                  {cat.colorNote}
+                </p>
+              )}
+
               <div className="space-y-2 flex-1">
                 {cat.lines.map((line, i) => (
                   <div key={i}>
@@ -64,19 +75,27 @@ export default function DressCode() {
                 ))}
               </div>
 
-              <div className="flex items-center gap-3">
-                {cat.palette.map((swatch) => (
-                  <div key={swatch.label} className="flex flex-col items-center gap-1">
-                    <span
-                      className="w-7 h-7 rounded-full border border-white/30 block"
-                      style={{ backgroundColor: swatch.hex }}
-                    />
-                    <span className="font-body text-[10px] text-white/50 tracking-wide">
-                      {swatch.label}
-                    </span>
-                  </div>
-                ))}
-              </div>
+              {cat.palette && cat.palette.length > 0 && (
+                <div className="flex items-center gap-3">
+                  {cat.palette.map((swatch) => (
+                    <div key={swatch.label} className="flex flex-col items-center gap-1">
+                      <span
+                        className="w-7 h-7 rounded-full border border-white/30 block"
+                        style={{ backgroundColor: swatch.hex }}
+                      />
+                      {!cat.hideSwatchLabels && (
+                        <span className="font-body text-[10px] text-white/50 tracking-wide">
+                          {swatch.label}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {cat.filler && (
+                <p className="font-body text-white/50 text-sm italic">{cat.filler}</p>
+              )}
             </div>
           ))}
         </div>

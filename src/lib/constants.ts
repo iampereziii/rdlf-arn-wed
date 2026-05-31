@@ -17,9 +17,9 @@ export const WEDDING = {
   },
   rsvpUrl: 'https://forms.gle/FiBmViyzfbf1KhKy5',
   weddingDateTime: new Date('2026-06-13T13:00:00+08:00'),
-  rsvpDeadline: new Date('2026-05-31T23:59:59+08:00'),
+  rsvpDeadline: new Date('2026-06-06T23:59:59+08:00'),
   // Human-readable form of rsvpDeadline — keep in sync with the date above.
-  rsvpDeadlineLabel: 'May 31, 2026',
+  rsvpDeadlineLabel: 'June 6, 2026',
   adultsOnly: true,
   pixiesetUrl: 'https://daronproject.pixieset.com/arianeandjun/',
   // Set to a filename in public/video/ when the save-the-date video is ready.
@@ -38,6 +38,10 @@ export const DRESS_CODE = {
   ninong: 'Off white / Beige Barong & Black slacks',
   ninang: 'Long gown in Beige / Champagne',
   entourage: 'Coordinated attire as briefed by the couple',
+  // Filler shown in the Entourage card now that its swatches are removed.
+  entourageFiller: 'Details have been shared with you directly.',
+  // Shared color directive for general guests.
+  guestColor: 'All shades of brown',
   gentlemen: 'Long sleeves and slacks',
   ladies: 'Long gown or cocktail dress',
   note: 'Strictly formal. Adults-only celebration — no children except abays.',
@@ -51,13 +55,13 @@ export const DRESS_CODE = {
       { label: 'Beige', hex: '#D9C9AC' },
       { label: 'Champagne', hex: '#EDD5A3' },
     ],
-    entourage: [
-      { label: 'Dusty Rose', hex: '#C49A8A' },
-      { label: 'Terracotta', hex: '#8B4A3A' },
-    ],
+    // Entourage swatches removed — they coordinate directly with the couple.
+    // Guests: all shades of brown, light → dark. Labels are not rendered.
     guests: [
-      { label: 'Sand', hex: '#8C7A56' },
-      { label: 'Taupe', hex: '#6E5E48' },
+      { label: 'Sand', hex: '#D9C2A6' },
+      { label: 'Camel', hex: '#B08D5B' },
+      { label: 'Chestnut', hex: '#8C6A4A' },
+      { label: 'Coffee', hex: '#5E4434' },
       { label: 'Espresso', hex: '#3C2E24' },
     ],
   },
@@ -95,29 +99,16 @@ export const ENTOURAGE = {
   flowerLady: 'Oona Alexa Domingo',
 }
 
-// Curated gallery — 20 photos spread across the full shoot.
+// Curated gallery — 6 photos balanced across both shoots. The full set lives
+// on Pixieset (pixiesetUrl), reached via the "View full gallery" link-out.
 // To swap a photo, replace its filename with another from public/photos/.
 export const PHOTOS: string[] = [
   // DP series — daytime outdoor shoot
   'DP802120.jpg',
-  'DP802175.jpg',
-  'DP802200.jpg',
-  'DP802260.jpg',
   'DP802300.jpg',
-  'DP802340.jpg',
-  'DP802395.jpg',
-  'DP802400.jpg',
-  'DP802460.jpg',
   'DP802500.jpg',
-  'DP802540.jpg',
-  'DP802600.jpg',
-  'DP802660.jpg',
   'DP802750.jpg',
   // DSC series — garden & evening shoot
-  'DSC03751.jpg',
   'DSC03850.jpg',
-  'DSC03900.jpg',
   'DSC04050.jpg',
-  'DSC04100.jpg',
-  'DSC04200.jpg',
 ]

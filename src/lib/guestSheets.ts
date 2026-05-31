@@ -27,6 +27,7 @@ import {
   type GuestGroup,
   type GuestSection,
 } from './guestData'
+import { RSVP_CSV } from './rsvpSheet'
 
 // Published-to-web CSV endpoints. These are public URLs, not secrets.
 const COUPLES_CSV =
@@ -139,6 +140,18 @@ export async function fetchCsv(url: string): Promise<string[][]> {
   return parseCsv(await res.text())
 }
 
+/** Like fetchCsv but returns [] for an empty URL or any failure. Used for
+ *  optional sources (the native-RSVP sheet) that may not be configured yet,
+ *  so a missing/broken source never breaks the /guests page. */
+export async function fetchCsvSafe(url: string): Promise<string[][]> {
+  if (!url) return []
+  try {
+    return await fetchCsv(url)
+  } catch {
+    return []
+  }
+}
+
 // --- normalization ---------------------------------------------------------
 
 type IndivRecord = {
@@ -196,31 +209,37 @@ function buildCouples(rows: string[][]): GuestGroup[] {
   return groups
 }
 
-/** Individual sheet → deduped, attending records. */
-function buildIndividualRecords(rows: string[][]): {
+/** Individual-shaped sheets → deduped, attending records. Accepts multiple
+ *  sheets (the Google Form responses sheet + the native-RSVP sheet); each is
+ *  read by its OWN header row, and dedup is GLOBAL across all of them — so the
+ *  same person appearing in both sources is deduped (and flagged) once. */
+function buildIndividualRecords(rowSets: string[][][]): {
   records: IndivRecord[]
   duplicateKeys: Set<string>
 } {
   const duplicateKeys = new Set<string>()
-  if (rows.length < 2) return { records: [], duplicateKeys }
-
-  const head = headerIndex(rows[0])
   const seen = new Map<string, IndivRecord>()
 
-  for (const row of rows.slice(1)) {
-    const name = normName(cell(row, head['full name']))
-    if (!name) continue
-    if (!isAttending(cell(row, head['are you attending the wedding?']))) continue
+  for (const rows of rowSets) {
+    if (rows.length < 2) continue
+    const head = headerIndex(rows[0])
 
-    const record: IndivRecord = {
-      name,
-      email: cell(row, head['email address']).trim().toLowerCase(),
-      contact: cell(row, head['contact number']).replace(/\D/g, ''),
+    for (const row of rows.slice(1)) {
+      const name = normName(cell(row, head['full name']))
+      if (!name) continue
+      if (!isAttending(cell(row, head['are you attending the wedding?']))) continue
+
+      const record: IndivRecord = {
+        name,
+        email: cell(row, head['email address']).trim().toLowerCase(),
+        contact: cell(row, head['contact number']).replace(/\D/g, ''),
+      }
+      // Same person, same email, submitted more than once (within or across
+      // sources).
+      const key = `${record.email}|${nameKey(record.name)}`
+      if (seen.has(key)) duplicateKeys.add(key)
+      else seen.set(key, record)
     }
-    // Same person, same email, submitted more than once.
-    const key = `${record.email}|${nameKey(record.name)}`
-    if (seen.has(key)) duplicateKeys.add(key)
-    else seen.set(key, record)
   }
   return { records: Array.from(seen.values()), duplicateKeys }
 }
@@ -230,13 +249,15 @@ function dupKeyOf(r: IndivRecord): string {
 }
 
 export async function loadGuestSections(): Promise<GuestSection[]> {
-  const [couplesRows, indivRows] = await Promise.all([
+  const [couplesRows, indivRows, rsvpRows] = await Promise.all([
     fetchCsv(COUPLES_CSV),
     fetchCsv(INDIVIDUALS_CSV),
+    // Native on-site RSVPs — individual-shaped, optional (empty until wired up).
+    fetchCsvSafe(RSVP_CSV),
   ])
 
   const couples = buildCouples(couplesRows)
-  const { records, duplicateKeys } = buildIndividualRecords(indivRows)
+  const { records, duplicateKeys } = buildIndividualRecords([indivRows, rsvpRows])
 
   // Split "two people, one cell" rows before any grouping runs.
   const splitRecords = splitCombinedRecords(records)

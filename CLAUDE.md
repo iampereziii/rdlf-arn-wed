@@ -19,7 +19,7 @@ Personal wedding website for the Perez–Domingo nuptials on June 13, 2026. A mi
 | Hosting | AWS Amplify | Static site deploy |
 | Language | TypeScript | Strict mode |
 | Package manager | npm | |
-| RSVP | Google Forms | External link — no backend needed |
+| RSVP | Native form → Google Sheet (Apps Script append, per ADR-0003); Google Form as fallback | No Next.js backend — writes via a public Apps Script `/exec` web app |
 
 ---
 
@@ -40,7 +40,7 @@ wedding-website/
       DressCode.tsx         # Dress code per guest type, adults-only note
       Entourage.tsx         # Principal sponsors + wedding party
       Gifts.tsx             # Monetary gift message
-      RSVP.tsx              # Google Form link, closes after May 10
+      RSVP.tsx              # Native RSVP form → RSVP Sheet; falls back to Google Form link if write endpoint unset; closes after deadline
     lib/
       constants.ts          # ALL wedding content — single source of truth
   public/
@@ -87,9 +87,16 @@ Load both fonts via `next/font/google` in `layout.tsx`. Never use a `<link>` tag
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXT_PUBLIC_RSVP_FORM_URL` | Yes | `https://forms.gle/FiBmViyzfbf1KhKy5` |
+| `NEXT_PUBLIC_RSVP_FORM_URL` | No | Google Form fallback, used only when the native RSVP write endpoint is unset. `https://forms.gle/FiBmViyzfbf1KhKy5` |
 
 Copy `.env.example` → `.env.local`. Never commit `.env.local`.
+
+> **RSVP / Sheet endpoints are NOT env vars.** Following the existing
+> seating/affiliations pattern, the RSVP Sheet's published-CSV URL, Apps Script
+> `/exec` URL, and token are public (not secrets) and live as module constants
+> in `src/lib/rsvpSheet.ts`. Empty strings mean "not configured" — RSVP.tsx then
+> falls back to the Google Form link, and `/guests` treats the RSVP sheet as a
+> source with no rows yet.
 
 ---
 

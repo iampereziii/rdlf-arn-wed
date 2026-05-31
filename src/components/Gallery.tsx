@@ -2,17 +2,11 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { PHOTOS } from '@/lib/constants'
+import { PHOTOS, WEDDING } from '@/lib/constants'
 import Divider from '@/components/Divider'
-
-const INITIAL_COUNT = 6
 
 export default function Gallery() {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState(false)
-
-  const visiblePhotos = expanded ? PHOTOS : PHOTOS.slice(0, INITIAL_COUNT)
-  const hasMore = PHOTOS.length > INITIAL_COUNT
 
   return (
     <section id="gallery" className="py-24 bg-blush">
@@ -29,49 +23,35 @@ export default function Gallery() {
           </p>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
-            {visiblePhotos.map((filename, i) => {
-              const isFeatured = i % 7 === 0
-              return (
-                <button
-                  key={filename}
-                  onClick={() => setLightboxSrc(`/photos/${filename}`)}
-                  className={`relative overflow-hidden group focus:outline-none focus:ring-2 focus:ring-accent ${
-                    isFeatured ? 'col-span-2 aspect-[16/7]' : 'col-span-1 aspect-square'
-                  }`}
-                  aria-label={`View photo ${i + 1}`}
-                >
-                  <Image
-                    src={`/photos/${filename}`}
-                    alt={`Prenup photo ${i + 1}`}
-                    fill
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                </button>
-              )
-            })}
+            {PHOTOS.map((filename, i) => (
+              <button
+                key={filename}
+                onClick={() => setLightboxSrc(`/photos/${filename}`)}
+                className="relative overflow-hidden group aspect-square focus:outline-none focus:ring-2 focus:ring-accent"
+                aria-label={`View photo ${i + 1}`}
+              >
+                <Image
+                  src={`/photos/${filename}`}
+                  alt={`Prenup photo ${i + 1}`}
+                  fill
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+              </button>
+            ))}
           </div>
         )}
 
-        {hasMore && (
-          <div className="flex justify-center mt-8">
-            <button
-              onClick={() => setExpanded((v) => !v)}
-              className="flex flex-col items-center gap-1 text-accent font-body text-sm tracking-widest uppercase hover:opacity-70 transition-opacity focus:outline-none focus:ring-2 focus:ring-accent rounded"
-              aria-label={expanded ? 'View less photos' : 'View more photos'}
-            >
-              <span>{expanded ? 'View Less' : 'View More'}</span>
-              <svg
-                className={`w-5 h-5 transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-          </div>
-        )}
+        <div className="flex justify-center mt-10">
+          <a
+            href={WEDDING.pixiesetUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 border border-accent text-accent font-body text-sm tracking-widest uppercase px-8 py-3 hover:bg-accent hover:text-blush transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <span>View Full Gallery</span>
+            <span aria-hidden="true">&rarr;</span>
+          </a>
+        </div>
       </div>
 
       {/* Lightbox */}
