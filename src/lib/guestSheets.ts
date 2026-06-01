@@ -160,6 +160,10 @@ type IndivRecord = {
   contact: string
   /** Set when this record was split out of a combined RSVP row. */
   submissionId?: string
+  /** Native-RSVP companion name, when the invite granted a +1. Blank/absent on
+   *  the external individuals form (no such column there). A record carrying
+   *  this becomes a couple group rather than a lone individual. */
+  plusOneName?: string
 }
 
 /** Expands combined RSVP rows ("two people, one cell") into one record per
@@ -176,7 +180,14 @@ function splitCombinedRecords(records: IndivRecord[]): IndivRecord[] {
       continue
     }
     for (const personName of combined.people) {
-      out.push({ ...record, name: personName, submissionId: combined.combined })
+      // A combined "two people, one cell" row is its own pair — a stray +1
+      // column on it would double-count, so drop it on the split.
+      out.push({
+        ...record,
+        name: personName,
+        submissionId: combined.combined,
+        plusOneName: undefined,
+      })
     }
   }
   return out
@@ -233,6 +244,8 @@ function buildIndividualRecords(rowSets: string[][][]): {
         name,
         email: cell(row, head['email address']).trim().toLowerCase(),
         contact: cell(row, head['contact number']).replace(/\D/g, ''),
+        // Only the native-RSVP sheet has this column; '' on the external form.
+        plusOneName: normName(cell(row, head['name of your +1 guest'])) || undefined,
       }
       // Same person, same email, submitted more than once (within or across
       // sources).
@@ -270,12 +283,30 @@ export async function loadGuestSections(): Promise<GuestSection[]> {
     submissionId: r.submissionId,
   })
 
+  // Native-RSVP guests who named a +1 become couple groups (mirroring the
+  // external "+1 guest" sheet's buildCouples shape) — primary + plus-one. They
+  // skip the review / family / individual flow below, which works on solos.
+  const plusOneRecords = splitRecords.filter((r) => r.plusOneName)
+  const soloRecords = splitRecords.filter((r) => !r.plusOneName)
+  const nativeCouples: GuestGroup[] = plusOneRecords.map((r) => ({
+    label: r.name,
+    kind: 'couple',
+    guests: [
+      toGuest(r),
+      {
+        name: r.plusOneName!,
+        source: 'plus-one',
+        initials: initialsOf(r.plusOneName!),
+      },
+    ],
+  }))
+
   // Shared-contact pairs: an email or phone used by 2+ *different* people.
   // Combined-entry split records legitimately share contact info (they are one
   // submission), so they are excluded from this detection.
   const inReview = new Set<IndivRecord>()
   const reviewGroups: GuestGroup[] = []
-  const reviewPool = splitRecords.filter((r) => !r.submissionId)
+  const reviewPool = soloRecords.filter((r) => !r.submissionId)
   const byEmail = groupBy(reviewPool, (r) => r.email)
   const byContact = groupBy(reviewPool, (r) => r.contact)
 
@@ -300,7 +331,7 @@ export async function loadGuestSections(): Promise<GuestSection[]> {
   }
 
   // Families: curated, matched by name against whatever is left.
-  const remaining = splitRecords.filter((r) => !inReview.has(r))
+  const remaining = soloRecords.filter((r) => !inReview.has(r))
   const usedInFamily = new Set<IndivRecord>()
   const familyGroups: GuestGroup[] = []
 
@@ -321,9 +352,10 @@ export async function loadGuestSections(): Promise<GuestSection[]> {
   // Everyone not placed in a couple, review pair, or family.
   const individuals = remaining.filter((r) => !usedInFamily.has(r))
 
+  const allCouples = [...couples, ...nativeCouples]
   const sections: GuestSection[] = []
-  if (couples.length > 0) {
-    sections.push({ title: 'Couples & pairs', groups: couples })
+  if (allCouples.length > 0) {
+    sections.push({ title: 'Couples & pairs', groups: allCouples })
   }
   if (familyGroups.length > 0 || reviewGroups.length > 0) {
     sections.push({

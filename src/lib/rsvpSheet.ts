@@ -41,22 +41,33 @@ export type RsvpInput = {
   email: string
   contact: string
   attending: boolean
+  /** Optional companion name when the invite granted a +1. Empty = solo.
+   *  Only meaningful when `attending` — a declining guest brings no one. */
+  plusOneName?: string
   /** Hidden anti-bot field — must be empty for a real submission. */
   honeypot: string
 }
 
 // Column order MUST match the RSVP Sheet's physical columns — appendRow writes
-// positionally. The Sheet's header row must be exactly (case-insensitive):
-//   Timestamp | Full Name | Email Address | Contact Number | Are you attending the wedding?
-// The last four names are the header contract guestSheets.ts parses; "Yes" in
-// the attending cell marks attendance (isAttending checks for "yes").
+// positionally, so the "+1" column MUST be the LAST one on the Sheet (adding it
+// mid-sheet would shift every later column). The Sheet's header row must be
+// exactly (case-insensitive):
+//   Timestamp | Full Name | Email Address | Contact Number | Are you attending the wedding? | Name of your +1 guest
+// The last five names are the header contract guestSheets.ts parses (it reads
+// by header name, so an as-yet-unadded "+1" column just parses as no +1);
+// "Yes" in the attending cell marks attendance (isAttending checks for "yes").
+// `Name of your +1 guest` reuses the existing "+1 guest" form's header verbatim
+// so guestSheets.ts shares one parse path.
 export async function submitRsvp(input: RsvpInput): Promise<boolean> {
+  // A declining guest brings no +1, regardless of what the form held.
+  const plusOne = input.attending ? normName(input.plusOneName ?? '') : ''
   const row: (string | number)[] = [
     new Date().toISOString(),
     normName(input.name),
     input.email.trim(),
     input.contact.trim(),
     input.attending ? 'Yes, I will attend' : 'No, I cannot attend',
+    plusOne,
   ]
   return appendRowToSheet(RSVP_WRITE_URL, RSVP_WRITE_TOKEN, row, input.honeypot)
 }

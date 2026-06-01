@@ -20,8 +20,23 @@ export default function RSVP() {
   const [honeypot, setHoneypot] = useState('')
   const [status, setStatus] = useState<Status>('idle')
 
+  // Personalized-invite link state, read from the URL on mount:
+  //   ?name=…  → prefills the Full name field (still editable)
+  //   ?plus=1  → this guest was granted a +1, so the companion field appears
+  // Read via URLSearchParams in an effect (not next/navigation's
+  // useSearchParams, which needs a Suspense boundary under output:'export').
+  const [plusAllowed, setPlusAllowed] = useState(false)
+  const [bringingPlusOne, setBringingPlusOne] = useState(false)
+  const [plusOneName, setPlusOneName] = useState('')
+
   useEffect(() => {
     setIsOpen(new Date() <= WEDDING.rsvpDeadline)
+
+    const params = new URLSearchParams(window.location.search)
+    const invitedName = params.get('name')
+    if (invitedName) setName(invitedName.trim().replace(/\s+/g, ' '))
+    const plus = params.get('plus')
+    if (plus === '1' || plus === 'true') setPlusAllowed(true)
   }, [])
 
   const formUrl = process.env.NEXT_PUBLIC_RSVP_FORM_URL ?? WEDDING.rsvpUrl
@@ -37,6 +52,9 @@ export default function RSVP() {
       email,
       contact,
       attending: attending === true,
+      // Only send a +1 when one was granted, the guest opted in, and they're
+      // attending — submitRsvp also drops it for a declining guest.
+      plusOneName: plusAllowed && bringingPlusOne ? plusOneName : '',
       honeypot,
     })
     setStatus(ok ? 'success' : 'error')
@@ -153,6 +171,50 @@ export default function RSVP() {
                 ))}
               </div>
             </fieldset>
+
+            {/* +1 — only for invitees granted one (?plus=1) who are attending. */}
+            {plusAllowed && attending === true && (
+              <fieldset className="space-y-3">
+                <legend className="font-body text-xs tracking-[0.3em] uppercase text-white/60 mb-2">
+                  Bringing a guest?
+                </legend>
+                <div className="flex gap-3">
+                  {[
+                    { label: 'Yes, +1', value: true },
+                    { label: 'Just me', value: false },
+                  ].map((opt) => (
+                    <button
+                      type="button"
+                      key={opt.label}
+                      onClick={() => setBringingPlusOne(opt.value)}
+                      className={`flex-1 font-body text-sm tracking-widest uppercase border-2 px-4 py-3 transition-colors focus:outline-none focus:ring-2 focus:ring-white ${
+                        bringingPlusOne === opt.value
+                          ? 'bg-white text-accent border-white'
+                          : 'border-white/50 text-white hover:border-white'
+                      }`}
+                      aria-pressed={bringingPlusOne === opt.value}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {bringingPlusOne && (
+                  <div>
+                    <label htmlFor="rsvp-plus-one" className="sr-only">
+                      Your guest&rsquo;s full name
+                    </label>
+                    <input
+                      id="rsvp-plus-one"
+                      type="text"
+                      value={plusOneName}
+                      onChange={(e) => setPlusOneName(e.target.value)}
+                      placeholder="Your guest's full name"
+                      className={inputClass}
+                    />
+                  </div>
+                )}
+              </fieldset>
+            )}
 
             <button
               type="submit"
