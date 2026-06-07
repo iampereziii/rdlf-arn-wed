@@ -41,7 +41,7 @@ export const DRESS_CODE = {
   // Filler shown in the Entourage card now that its swatches are removed.
   entourageFiller: 'Details have been shared with you directly.',
   // Shared color directive for general guests.
-  guestColor: 'All shades of brown',
+  guestColor: 'Dark brown & chocolate brown',
   gentlemen: 'Long sleeves and slacks',
   ladies: 'Long gown or cocktail dress',
   note: 'Strictly formal. Adults-only celebration — no children except abays.',
@@ -56,13 +56,10 @@ export const DRESS_CODE = {
       { label: 'Champagne', hex: '#EDD5A3' },
     ],
     // Entourage swatches removed — they coordinate directly with the couple.
-    // Guests: all shades of brown, light → dark. Labels are not rendered.
+    // Guests: dark brown & chocolate brown only, light → dark. Labels are not rendered.
     guests: [
-      { label: 'Sand', hex: '#D9C2A6' },
-      { label: 'Camel', hex: '#B08D5B' },
-      { label: 'Chestnut', hex: '#8C6A4A' },
-      { label: 'Coffee', hex: '#5E4434' },
-      { label: 'Espresso', hex: '#3C2E24' },
+      { label: 'Dark Brown', hex: '#5C4033' },
+      { label: 'Chocolate Brown', hex: '#3E2723' },
     ],
   },
 }
