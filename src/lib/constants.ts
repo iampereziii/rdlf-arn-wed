@@ -29,6 +29,16 @@ export const WEDDING = {
   heroPhoto: 'DSC04050.jpg' as string | null,
 }
 
+// Portfolio lead-gen: the site doubles as a showcase of Rodolfo's web work.
+// The footer credit links here so impressed guests can reach out for pricing.
+// Whisper-level by design — the quality sells, the credit just catches the lead.
+export const CREDIT = {
+  name: 'Rodolfo Perez',
+  email: 'rodolfoiiiperez@yahoo.com',
+  // Prefilled email subject so an inquiry arrives already framed.
+  subject: "I saw your wedding site — let's talk",
+}
+
 export const GIFTS = {
   message:
     'Celebrating with you is the greatest gift we could ask for. We know how important your time is, and should you wish to bless us further, a monetary gift will help us begin our forever.',

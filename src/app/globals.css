@@ -9,3 +9,23 @@ html {
 body {
   background-color: #FEF0EC;
 }
+
+/* Anchored sections clear the sticky navbar when jumped to. */
+section[id] {
+  scroll-margin-top: 4.5rem;
+}
+
+/* Accessibility: honor reduced-motion. All entrance/scroll motion collapses to
+   an instant state so content is always shown — never hidden behind animation. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

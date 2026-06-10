@@ -61,7 +61,10 @@ export default function Countdown() {
       <div className="flex justify-center gap-6 sm:gap-10">
         {units.map(({ label, value }) => (
           <div key={label} className="flex flex-col items-center">
-            <span className="font-['Cormorant_Garamond'] text-4xl sm:text-5xl font-semibold text-[#8B4A3A] tabular-nums w-[2.5ch] text-center">
+            <span
+              key={value}
+              className="font-['Cormorant_Garamond'] text-4xl sm:text-5xl font-semibold text-[#8B4A3A] tabular-nums w-[2.5ch] text-center animate-tick"
+            >
               {String(value).padStart(2, '0')}
             </span>
             <span className="font-['Cormorant_Garamond'] text-xs sm:text-sm uppercase tracking-widest text-[#8B4A3A] mt-1">

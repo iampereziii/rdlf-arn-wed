@@ -15,11 +15,31 @@ const NAV_LINKS = [
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [active, setActive] = useState('')
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 60)
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  // Scroll-spy: highlight the nav link for whichever section is in view.
+  useEffect(() => {
+    const sections = NAV_LINKS.map((l) => document.getElementById(l.href.slice(1))).filter(
+      (el): el is HTMLElement => el !== null
+    )
+    if (sections.length === 0) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
+        if (visible) setActive(`#${visible.target.id}`)
+      },
+      { rootMargin: '-45% 0px -45% 0px' }
+    )
+    sections.forEach((s) => observer.observe(s))
+    return () => observer.disconnect()
   }, [])
 
   const textColor = scrolled ? 'text-accent' : 'text-white'
@@ -42,7 +62,9 @@ export default function Navbar() {
             <a
               key={link.href}
               href={link.href}
-              className={`font-body text-xs tracking-widest uppercase transition-colors ${textColor} ${hoverColor}`}
+              className={`relative font-body text-xs tracking-widest uppercase transition-colors ${textColor} ${hoverColor} after:absolute after:left-0 after:-bottom-1 after:h-px after:bg-current after:transition-all after:duration-300 ${
+                active === link.href ? 'after:w-full' : 'after:w-0 hover:after:w-full'
+              }`}
             >
               {link.label}
             </a>

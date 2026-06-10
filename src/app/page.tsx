@@ -18,10 +18,10 @@ export default function Home() {
         <Hero />
         <FadeIn><Countdown /></FadeIn>
         <FadeIn><Gallery /></FadeIn>
-        <FadeIn><EventDetails /></FadeIn>
-        <FadeIn><DressCode /></FadeIn>
-        <FadeIn><Entourage /></FadeIn>
-        <FadeIn><Gifts /></FadeIn>
+        <FadeIn direction="left"><EventDetails /></FadeIn>
+        <FadeIn direction="right"><DressCode /></FadeIn>
+        <FadeIn direction="left"><Entourage /></FadeIn>
+        <FadeIn direction="right"><Gifts /></FadeIn>
         <FadeIn><RSVP /></FadeIn>
       </main>
       <Footer />
