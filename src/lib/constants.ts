@@ -32,6 +32,11 @@ export const WEDDING = {
 export const GIFTS = {
   message:
     'Celebrating with you is the greatest gift we could ask for. We know how important your time is, and should you wish to bless us further, a monetary gift will help us begin our forever.',
+  // Maya QR for direct monetary gifts. Filename in public/. Empty string = not
+  // configured, so the QR block is hidden (mirrors heroPhoto/heroVideo pattern).
+  qrImage: 'gifts/maya-qr.jpg' as string,
+  qrLabel: 'Maya', // wallet name shown under the QR
+  qrAccountName: '', // optional: name on the account, for guest reassurance
 }
 
 export const DRESS_CODE = {
