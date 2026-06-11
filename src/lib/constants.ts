@@ -49,6 +49,23 @@ export const GIFTS = {
   qrAccountName: '', // optional: name on the account, for guest reassurance
 }
 
+// "Find Your Seat" banner — venue signage printed or displayed at the
+// reception entrance. Guests scan the QR to open the /find-my-table lookup.
+// All banner copy lives here; layout in SeatBanner.tsx.
+export const SEAT_BANNER = {
+  eyebrow: 'Jun & Ariane',
+  heading: 'Find Your Seat',
+  message: 'Please scan to find your seat',
+  // QR encoding the deployed /find-my-table URL. Filename in public/. Empty
+  // string = not configured, so the QR slot shows a placeholder (mirrors
+  // GIFTS.qrImage pattern). Generate the QR externally once the production
+  // URL is final and drop the file in public/.
+  qrImage: '' as string,
+  // The guest-facing lookup the QR points at — shown under the QR so guests
+  // already on the site can tap/type their way there too.
+  lookupPath: '/find-my-table',
+}
+
 export const DRESS_CODE = {
   ninong: 'Off white / Beige Barong & Black slacks',
   ninang: 'Long gown in Beige / Champagne',
