@@ -7,6 +7,7 @@ import DressCode from '@/components/DressCode'
 import Entourage from '@/components/Entourage'
 import Gifts from '@/components/Gifts'
 import RSVP from '@/components/RSVP'
+import GameTeaser from '@/components/GameTeaser'
 import Footer from '@/components/Footer'
 import FadeIn from '@/components/FadeIn'
 
@@ -17,6 +18,7 @@ export default function Home() {
       <main>
         <Hero />
         <FadeIn><Countdown /></FadeIn>
+        <FadeIn><GameTeaser /></FadeIn>
         <FadeIn><Gallery /></FadeIn>
         <FadeIn direction="left"><EventDetails /></FadeIn>
         <FadeIn direction="right"><DressCode /></FadeIn>

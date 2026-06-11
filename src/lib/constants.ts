@@ -112,6 +112,43 @@ export const ENTOURAGE = {
   flowerLady: 'Oona Alexa Domingo',
 }
 
+// "Catch the Hearts" — tap/reaction mini game guests play while waiting
+// between the ceremony and reception. Highest score on the leaderboard wins a
+// prize at the reception. All game copy lives here; mechanics in Game.tsx,
+// Sheet endpoints in gameSheet.ts.
+export const GAME = {
+  title: 'Catch the Hearts',
+  tagline: 'A little game while you wait',
+  instructions:
+    'Tap the falling hearts before they reach the bottom. Rings are worth extra. You have 30 seconds — play as many times as you like; your best score counts.',
+  prizeNote: 'The highest score by the reception wins a prize!',
+  playLabel: 'Play',
+  replayLabel: 'Play again',
+  durationSeconds: 30,
+  // Points per catch, by kind. Rings are rarer (see RING_CHANCE in Game.tsx).
+  heartPoints: 1,
+  ringPoints: 3,
+  topN: 10,
+  leaderboardTitle: 'Leaderboard',
+  leaderboardEmpty: 'No scores yet — be the first!',
+  leaderboardError: 'Could not load the leaderboard. Pull to refresh or try again later.',
+  winnerNote: 'wins the prize',
+  yourBestLabel: 'Your best',
+  namePlaceholder: 'Your full name',
+  nameHint: 'Use your full name so we know who to hand the prize to.',
+  submitLabel: 'Save my score',
+  submittingLabel: 'Saving…',
+  submittedMessage: 'Score saved — watch the leaderboard!',
+  submitError: 'Something went wrong saving your score. Please try again.',
+  // Shown instead of the submit form when the score endpoint isn't configured.
+  playOnlyNote: 'Show this score to the couple at the reception!',
+  teaser: {
+    heading: 'Catch the Hearts',
+    copy: 'Waiting for the reception? Tap hearts, top the leaderboard, win a prize.',
+    cta: 'Play the game',
+  },
+}
+
 // Curated gallery — 6 photos balanced across both shoots. The full set lives
 // on Pixieset (pixiesetUrl), reached via the "View full gallery" link-out.
 // To swap a photo, replace its filename with another from public/photos/.

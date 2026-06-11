@@ -10,6 +10,9 @@ const NAV_LINKS = [
   { label: 'Entourage', href: '#entourage' },
   { label: 'Gifts', href: '#gifts' },
   { label: 'RSVP', href: '#rsvp' },
+  // Route link, not an anchor — the scroll-spy ignores it (getElementById
+  // finds no element for "/game".slice(1) and nulls are filtered out).
+  { label: 'Game', href: '/game' },
 ]
 
 export default function Navbar() {
