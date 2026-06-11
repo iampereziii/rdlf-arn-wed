@@ -17,16 +17,23 @@
 import { cell, fetchCsv, headerIndex, normName } from './guestSheets'
 import { copyToClipboard } from './affiliations'
 import { saveRowsToSheet } from './sheetWrite'
+import { ENTOURAGE } from './constants'
 import type { GroupKind, Guest, GuestSection } from './guestData'
 
 export type { GroupKind }
 export { copyToClipboard }
 
-/** A reception table. Numbered, with a seat capacity. */
-export type Table = { number: number; capacity: number }
+/** A reception table. Numbered, with a seat capacity and an optional display
+ *  name (e.g. "VIP 1") that overrides "Table N" everywhere it's shown. */
+export type Table = { number: number; capacity: number; label?: string }
 
 /** guestName → table number. Absent = unassigned. */
 export type Assignments = Record<string, number>
+
+/** Unit ids (see SeatUnit.id) the admin has split into per-guest units — e.g.
+ *  a sponsor seated at a VIP table while their +1 sits elsewhere. Persisted
+ *  alongside tables/assignments so the split survives reloads. */
+export type Splits = string[]
 
 /** The assignable unit on the seating board. Couples / families / review pairs
  *  move as a unit (mirrors the move-as-a-unit rule in guestData.ts); individual
@@ -37,6 +44,52 @@ export type SeatUnit = {
   label: string
   kind: GroupKind
   guests: Guest[]
+  /** Set on per-guest units carved out of a split group — the original unit's
+   *  id, used by the Merge action to restore the group. */
+  splitFrom?: string
+}
+
+/** Display name for a table — its label when set, "Table N" otherwise. */
+export function tableLabelOf(table: Table): string {
+  const label = table.label?.trim()
+  return label ? label : `Table ${table.number}`
+}
+
+/** Display name for a table number against the table list. */
+export function tableDisplayName(number: number, tables: Table[]): string {
+  const table = tables.find((t) => t.number === number)
+  return table ? tableLabelOf(table) : `Table ${number}`
+}
+
+// --- Sponsors ----------------------------------------------------------------
+
+// Principal sponsors get a tag on the seating board so they're easy to round up
+// for the VIP tables. Names come from ENTOURAGE (single source of truth);
+// honorifics are stripped before matching because RSVP names usually omit them
+// ("Raymond Deniña" vs "Dr. Raymond Deniña"). Matching is exact after that —
+// conservative on purpose; a differently-spelled RSVP name just won't tag.
+const HONORIFICS = /^(architect|arch|atty|dr|engr|mrs|ms|mr|mx)\.?\s+/i
+
+function sponsorKey(name: string): string {
+  let s = normName(name)
+  for (;;) {
+    const next = s.replace(HONORIFICS, '')
+    if (next === s) break
+    s = next
+  }
+  return s.toLowerCase()
+}
+
+const SPONSOR_KEYS: ReadonlySet<string> = new Set(
+  ENTOURAGE.principalSponsors.flatMap((pair) => [
+    sponsorKey(pair.ninang),
+    sponsorKey(pair.ninong),
+  ]),
+)
+
+/** True when the guest is a principal sponsor (per ENTOURAGE). */
+export function isSponsor(name: string): boolean {
+  return SPONSOR_KEYS.has(sponsorKey(name))
 }
 
 // Published-to-web CSV endpoint for the single seating Sheet. One tab, combined
@@ -69,15 +122,36 @@ export const seatingWriteEnabled = (): boolean => SEATING_WRITE_URL !== ''
 export async function saveSeatingToSheet(
   tables: Table[],
   assignments: Assignments,
+  splits: Splits,
 ): Promise<boolean> {
   const rows: (string | number)[][] = [['type', 'key', 'value']]
-  for (const t of [...tables].sort((a, b) => a.number - b.number)) {
+  for (const row of seatingRows(tables, assignments, splits)) rows.push(row)
+  return saveRowsToSheet(SEATING_WRITE_URL, SEATING_WRITE_TOKEN, rows)
+}
+
+/** The seating dataset as `type, key, value` rows (no header) — shared by the
+ *  Apps Script save and the clipboard TSV export so the two can't drift. */
+function seatingRows(
+  tables: Table[],
+  assignments: Assignments,
+  splits: Splits,
+): (string | number)[][] {
+  const rows: (string | number)[][] = []
+  const sortedTables = [...tables].sort((a, b) => a.number - b.number)
+  for (const t of sortedTables) {
     rows.push(['table', t.number, t.capacity])
+  }
+  for (const t of sortedTables) {
+    const label = t.label?.trim()
+    if (label) rows.push(['label', t.number, label])
   }
   for (const name of Object.keys(assignments).sort((a, b) => a.localeCompare(b))) {
     rows.push(['assignment', name, assignments[name]])
   }
-  return saveRowsToSheet(SEATING_WRITE_URL, SEATING_WRITE_TOKEN, rows)
+  for (const id of [...splits].sort((a, b) => a.localeCompare(b))) {
+    rows.push(['split', id, 1])
+  }
+  return rows
 }
 
 // localStorage keys for the picker's working state. Same convention as
@@ -85,12 +159,20 @@ export async function saveSeatingToSheet(
 // KEY PRESENT (even empty) = explicit working state, never re-seed.
 const TABLES_STORAGE_KEY = 'seating-tables'
 const ASSIGNMENTS_STORAGE_KEY = 'seating-assignments'
+const SPLITS_STORAGE_KEY = 'seating-splits'
 
 // --- Unit derivation -------------------------------------------------------
 
 /** Flattens side-grouped sections into assignable units. Non-individual groups
- *  become one unit each; individual groups split into one unit per guest. */
-export function buildUnits(sections: GuestSection[]): SeatUnit[] {
+ *  become one unit each; individual groups split into one unit per guest.
+ *  Groups whose id is in `splits` are carved into per-guest units (tagged with
+ *  `splitFrom`) so each member can be seated independently — the escape hatch
+ *  from the move-as-a-unit rule, e.g. a sponsor at a VIP table while their +1
+ *  sits elsewhere. */
+export function buildUnits(
+  sections: GuestSection[],
+  splits?: ReadonlySet<string>,
+): SeatUnit[] {
   const units: SeatUnit[] = []
   for (const section of sections) {
     for (const group of section.groups) {
@@ -104,12 +186,20 @@ export function buildUnits(sections: GuestSection[]): SeatUnit[] {
           })
         }
       } else {
-        units.push({
-          id: group.guests.map((g) => g.name).join('|'),
-          label: group.label,
-          kind: group.kind,
-          guests: group.guests,
-        })
+        const id = group.guests.map((g) => g.name).join('|')
+        if (splits?.has(id)) {
+          for (const guest of group.guests) {
+            units.push({
+              id: guest.name,
+              label: guest.name,
+              kind: 'individual',
+              guests: [guest],
+              splitFrom: id,
+            })
+          }
+        } else {
+          units.push({ id, label: group.label, kind: group.kind, guests: group.guests })
+        }
       }
     }
   }
@@ -166,8 +256,14 @@ export function orphanedAssignments(
 
 // --- Guest-facing lookup ---------------------------------------------------
 
-/** A guest's seating result: the matched name, their table, and tablemates. */
-export type GuestSeat = { name: string; table: number; tablemates: string[] }
+/** A guest's seating result: the matched name, their table (number + display
+ *  name, e.g. "VIP 1"), and tablemates. */
+export type GuestSeat = {
+  name: string
+  table: number
+  tableLabel: string
+  tablemates: string[]
+}
 
 /** Finds seated guests whose name contains `query` (trim + collapse + lowercase
  *  substring match), each with their table number and the other names at that
@@ -176,6 +272,7 @@ export type GuestSeat = { name: string; table: number; tablemates: string[] }
 export function findSeats(
   query: string,
   assignments: Assignments,
+  tables: Table[] = [],
   minLen = 3,
 ): GuestSeat[] {
   const q = normName(query).toLowerCase()
@@ -187,6 +284,7 @@ export function findSeats(
     .map(([name, table]) => ({
       name,
       table,
+      tableLabel: tableDisplayName(table, tables),
       tablemates: entries
         .filter(([n, t]) => t === table && n !== name)
         .map(([n]) => n)
@@ -197,15 +295,22 @@ export function findSeats(
 // --- Sheet read ------------------------------------------------------------
 
 /** Reads the seating Sheet (one tab, columns `type, key, value`) into tables +
- *  assignments:
+ *  assignments + splits:
  *    type=table       → key = tableNumber, value = capacity
+ *    type=label       → key = tableNumber, value = display name (e.g. "VIP 1")
  *    type=assignment  → key = guestName,   value = tableNumber
+ *    type=split       → key = unit id (member names joined by "|")
  *  Forgiving on bad rows. Empty on missing URL, parse failure, or fetch failure. */
 export async function loadSeatingFromSheet(): Promise<{
   tables: Table[]
   assignments: Assignments
+  splits: Splits
 }> {
-  const empty = { tables: [] as Table[], assignments: {} as Assignments }
+  const empty = {
+    tables: [] as Table[],
+    assignments: {} as Assignments,
+    splits: [] as Splits,
+  }
   if (!SEATING_CSV) return empty
   try {
     const rows = await fetchCsv(SEATING_CSV)
@@ -213,6 +318,10 @@ export async function loadSeatingFromSheet(): Promise<{
     const head = headerIndex(rows[0])
     const tables: Table[] = []
     const assignments: Assignments = {}
+    const splits: Splits = []
+    // Collected separately and applied after the loop — a hand-edited sheet
+    // may order label rows before their table rows.
+    const labels = new Map<number, string>()
     for (const row of rows.slice(1)) {
       const type = cell(row, head['type']).trim().toLowerCase()
       const key = normName(cell(row, head['key']))
@@ -222,13 +331,23 @@ export async function loadSeatingFromSheet(): Promise<{
         const capacity = parseInt(value, 10)
         if (!Number.isFinite(number)) continue
         tables.push({ number, capacity: Number.isFinite(capacity) ? capacity : 0 })
+      } else if (type === 'label') {
+        const number = parseInt(key, 10)
+        if (!Number.isFinite(number) || !value) continue
+        labels.set(number, value)
       } else if (type === 'assignment') {
         const table = parseInt(value, 10)
         if (!key || !Number.isFinite(table)) continue
         assignments[key] = table
+      } else if (type === 'split') {
+        if (key && !splits.includes(key)) splits.push(key)
       }
     }
-    return { tables, assignments }
+    for (const table of tables) {
+      const label = labels.get(table.number)
+      if (label) table.label = label
+    }
+    return { tables, assignments, splits }
   } catch {
     return empty
   }
@@ -245,10 +364,18 @@ export function loadLocalTables(): Table[] | null {
   try {
     const parsed = JSON.parse(raw)
     if (Array.isArray(parsed)) {
-      return parsed.filter(
-        (x): x is Table =>
-          x && typeof x.number === 'number' && typeof x.capacity === 'number',
-      )
+      return parsed
+        .filter(
+          (x): x is Table =>
+            x && typeof x.number === 'number' && typeof x.capacity === 'number',
+        )
+        .map((x) => ({
+          number: x.number,
+          capacity: x.capacity,
+          ...(typeof x.label === 'string' && x.label.trim() !== ''
+            ? { label: x.label }
+            : {}),
+        }))
     }
   } catch {
     // Fall through.
@@ -281,6 +408,26 @@ export function saveLocalAssignments(map: Assignments): void {
   window.localStorage.setItem(ASSIGNMENTS_STORAGE_KEY, JSON.stringify(map))
 }
 
+export function loadLocalSplits(): Splits | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(SPLITS_STORAGE_KEY)
+  if (raw === null) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      return parsed.filter((x): x is string => typeof x === 'string')
+    }
+  } catch {
+    // Fall through.
+  }
+  return null
+}
+
+export function saveLocalSplits(splits: Splits): void {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(SPLITS_STORAGE_KEY, JSON.stringify(splits))
+}
+
 // --- Equality (for the unpublished-changes indicator) ----------------------
 
 export function tablesEqual(a: Table[], b: Table[]): boolean {
@@ -288,7 +435,12 @@ export function tablesEqual(a: Table[], b: Table[]): boolean {
   const sort = (xs: Table[]) => [...xs].sort((x, y) => x.number - y.number)
   const as = sort(a)
   const bs = sort(b)
-  return as.every((t, i) => t.number === bs[i].number && t.capacity === bs[i].capacity)
+  return as.every(
+    (t, i) =>
+      t.number === bs[i].number &&
+      t.capacity === bs[i].capacity &&
+      (t.label?.trim() || '') === (bs[i].label?.trim() || ''),
+  )
 }
 
 export function assignmentsEqual(a: Assignments, b: Assignments): boolean {
@@ -297,18 +449,26 @@ export function assignmentsEqual(a: Assignments, b: Assignments): boolean {
   return ak.every((k) => a[k] === b[k])
 }
 
+export function splitsEqual(a: Splits, b: Splits): boolean {
+  if (a.length !== b.length) return false
+  const bs = new Set(b)
+  return a.every((id) => bs.has(id))
+}
+
 // --- Export ----------------------------------------------------------------
 
-/** TSV for the seating Sheet — header `type, key, value` + table rows (sorted by
- *  number) then assignment rows (sorted by name, for stable Sheet diffs). The
- *  admin pastes this whole-sheet-replace into the seating Sheet. */
-export function exportSeatingTSV(tables: Table[], assignments: Assignments): string {
+/** TSV for the seating Sheet — header `type, key, value` + the same rows the
+ *  Apps Script save writes (tables, labels, assignments, splits — each block
+ *  sorted, for stable Sheet diffs). The admin pastes this whole-sheet-replace
+ *  into the seating Sheet. */
+export function exportSeatingTSV(
+  tables: Table[],
+  assignments: Assignments,
+  splits: Splits,
+): string {
   const lines = ['type\tkey\tvalue']
-  for (const t of [...tables].sort((a, b) => a.number - b.number)) {
-    lines.push(`table\t${t.number}\t${t.capacity}`)
-  }
-  for (const name of Object.keys(assignments).sort((a, b) => a.localeCompare(b))) {
-    lines.push(`assignment\t${name}\t${assignments[name]}`)
+  for (const row of seatingRows(tables, assignments, splits)) {
+    lines.push(row.join('\t'))
   }
   return lines.join('\n')
 }

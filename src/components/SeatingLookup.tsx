@@ -12,6 +12,7 @@ import {
   findSeats,
   loadSeatingFromSheet,
   type Assignments,
+  type Table,
 } from '@/lib/seating'
 
 const MIN_QUERY = 3
@@ -24,13 +25,15 @@ type Status = 'loading' | 'live' | 'empty' | 'error'
 export default function SeatingLookup() {
   const [status, setStatus] = useState<Status>('loading')
   const [assignments, setAssignments] = useState<Assignments>({})
+  const [tables, setTables] = useState<Table[]>([])
   const [query, setQuery] = useState('')
 
   const load = useCallback(async () => {
     setStatus('loading')
     try {
-      const { assignments } = await loadSeatingFromSheet()
+      const { assignments, tables } = await loadSeatingFromSheet()
       setAssignments(assignments)
+      setTables(tables)
       setStatus(Object.keys(assignments).length > 0 ? 'live' : 'empty')
     } catch {
       setStatus('error')
@@ -43,8 +46,8 @@ export default function SeatingLookup() {
 
   const trimmed = query.trim()
   const results = useMemo(
-    () => findSeats(trimmed, assignments, MIN_QUERY),
-    [trimmed, assignments],
+    () => findSeats(trimmed, assignments, tables, MIN_QUERY),
+    [trimmed, assignments, tables],
   )
   const shown = results.slice(0, MAX_RESULTS)
   const tooShort = trimmed.length > 0 && trimmed.length < MIN_QUERY
@@ -154,7 +157,7 @@ export default function SeatingLookup() {
                     You’re seated at
                   </p>
                   <p className="font-script text-5xl leading-tight text-[#8B4A3A]">
-                    Table {r.table}
+                    {r.tableLabel}
                   </p>
                   {r.tablemates.length > 0 && (
                     <div className="mt-3 border-t border-[#E2C0B2] pt-3">
