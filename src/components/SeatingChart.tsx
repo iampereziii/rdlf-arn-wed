@@ -8,18 +8,25 @@ import {
   buildUnits,
   copyToClipboard,
   exportSeatingTSV,
+  isSponsor,
   loadLocalAssignments,
+  loadLocalSplits,
   loadLocalTables,
   loadSeatingFromSheet,
   orphanedAssignments,
   saveLocalAssignments,
+  saveLocalSplits,
   saveLocalTables,
   saveSeatingToSheet,
   seatingWriteEnabled,
+  splitsEqual,
+  tableDisplayName,
+  tableLabelOf,
   tablesEqual,
   unitTable,
   type Assignments,
   type SeatUnit,
+  type Splits,
   type Table,
 } from '@/lib/seating'
 import {
@@ -90,13 +97,16 @@ export default function SeatingChart() {
   const t = THEMES[mode]
   const [adminMode, setAdminMode] = useState(false)
   const [query, setQuery] = useState('')
+  const [sponsorsOnly, setSponsorsOnly] = useState(false)
 
   // Working state (localStorage-mirrored) + the Sheet snapshot taken at load,
   // used to flag unpublished changes. Mirrors the affiliations pattern.
   const [tables, setTables] = useState<Table[]>([])
   const [assignments, setAssignments] = useState<Assignments>({})
+  const [splits, setSplits] = useState<Splits>([])
   const [tablesSnapshot, setTablesSnapshot] = useState<Table[]>([])
   const [assignmentsSnapshot, setAssignmentsSnapshot] = useState<Assignments>({})
+  const [splitsSnapshot, setSplitsSnapshot] = useState<Splits>([])
   const [newCapacity, setNewCapacity] = useState(DEFAULT_CAPACITY)
   const [exportFeedback, setExportFeedback] = useState('')
   const [saving, setSaving] = useState(false)
@@ -118,6 +128,7 @@ export default function SeatingChart() {
       setData(sections)
       setTablesSnapshot(seating.tables)
       setAssignmentsSnapshot(seating.assignments)
+      setSplitsSnapshot(seating.splits)
 
       // Seed working state from the Sheet only on first visit (key missing).
       const savedTables = loadLocalTables()
@@ -133,6 +144,13 @@ export default function SeatingChart() {
         saveLocalAssignments(seating.assignments)
       } else {
         setAssignments(savedAssign)
+      }
+      const savedSplits = loadLocalSplits()
+      if (savedSplits === null) {
+        setSplits(seating.splits)
+        saveLocalSplits(seating.splits)
+      } else {
+        setSplits(savedSplits)
       }
 
       setStatus('live')
@@ -203,11 +221,64 @@ export default function SeatingChart() {
     })
   }, [])
 
+  // Display name for a table ("VIP 1"); blank reverts to "Table N".
+  const renameTable = useCallback((number: number, label: string) => {
+    setTables((prev) => {
+      const next = prev.map((x) =>
+        x.number === number
+          ? { ...x, label: label.trim() === '' ? undefined : label }
+          : x,
+      )
+      saveLocalTables(next)
+      return next
+    })
+  }, [])
+
+  // Carve a couple/family unit into per-guest units so each member can be
+  // seated independently (sponsor at a VIP table, +1 elsewhere). Existing
+  // assignments carry over — both halves stay where the unit was seated until
+  // moved.
+  const splitUnit = useCallback((unit: SeatUnit) => {
+    setSplits((prev) => {
+      if (prev.includes(unit.id)) return prev
+      const next = [...prev, unit.id]
+      saveLocalSplits(next)
+      return next
+    })
+  }, [])
+
+  // Restore a split unit. Members may sit at different tables by now, so their
+  // seats are cleared — the merged unit is reseated together, deliberately.
+  const mergeUnit = useCallback((unit: SeatUnit) => {
+    const originalId = unit.splitFrom
+    if (!originalId) return
+    const members = originalId.split('|')
+    if (
+      !window.confirm(
+        `Merge ${members.join(' & ')} back into one unit? Their current seats will be cleared so you can reseat them together.`,
+      )
+    ) {
+      return
+    }
+    setSplits((prev) => {
+      const next = prev.filter((id) => id !== originalId)
+      saveLocalSplits(next)
+      return next
+    })
+    setAssignments((prev) => {
+      const next = { ...prev }
+      for (const name of members) delete next[name]
+      saveLocalAssignments(next)
+      return next
+    })
+  }, [])
+
   const removeTable = useCallback(
-    (number: number) => {
+    (table: Table) => {
+      const number = table.number
       if (
         !window.confirm(
-          `Remove Table ${number}? Anyone seated there will be moved back to Unassigned.`,
+          `Remove ${tableLabelOf(table)}? Anyone seated there will be moved back to Unassigned.`,
         )
       ) {
         return
@@ -240,7 +311,7 @@ export default function SeatingChart() {
   }, [])
 
   const handleExport = useCallback(async () => {
-    const tsv = exportSeatingTSV(tables, assignments)
+    const tsv = exportSeatingTSV(tables, assignments, splits)
     const ok = await copyToClipboard(tsv)
     setExportFeedback(
       ok
@@ -248,33 +319,36 @@ export default function SeatingChart() {
         : 'Copy failed — clipboard not available in this browser.',
     )
     window.setTimeout(() => setExportFeedback(''), 4000)
-  }, [tables, assignments])
+  }, [tables, assignments, splits])
 
   // One-click write-back via the Apps Script proxy. On success, advance the
   // snapshot to the just-saved state so the "Unpublished" badge clears.
   const handleSave = useCallback(async () => {
     setSaving(true)
-    const ok = await saveSeatingToSheet(tables, assignments)
+    const ok = await saveSeatingToSheet(tables, assignments, splits)
     setSaving(false)
     if (ok) {
       setTablesSnapshot(tables)
       setAssignmentsSnapshot(assignments)
+      setSplitsSnapshot(splits)
       setExportFeedback('Saved to the seating Sheet.')
     } else {
       setExportFeedback('Save failed — check your connection, or use Export as a fallback.')
     }
     window.setTimeout(() => setExportFeedback(''), 4000)
-  }, [tables, assignments])
+  }, [tables, assignments, splits])
 
   // --- Derived -------------------------------------------------------------
 
-  const units = useMemo(() => buildUnits(data), [data])
+  const units = useMemo(() => buildUnits(data, new Set(splits)), [data, splits])
   const sortedTables = useMemo(
     () => [...tables].sort((a, b) => a.number - b.number),
     [tables],
   )
+  // Display names ("VIP 1" / "Table 3"). Resolved back to table numbers by
+  // index — labels may contain digits, so parsing them is not safe.
   const tableOptions = useMemo(
-    () => sortedTables.map((tb) => `Table ${tb.number}`),
+    () => sortedTables.map(tableLabelOf),
     [sortedTables],
   )
   const orphans = useMemo(
@@ -285,8 +359,9 @@ export default function SeatingChart() {
   const q = query.trim().toLowerCase()
   const matchesQuery = useCallback(
     (unit: SeatUnit) =>
-      !q || unit.guests.some((g) => g.name.toLowerCase().includes(q)),
-    [q],
+      (!q || unit.guests.some((g) => g.name.toLowerCase().includes(q))) &&
+      (!sponsorsOnly || unit.guests.some((g) => isSponsor(g.name))),
+    [q, sponsorsOnly],
   )
 
   const unitsAtTable = useCallback(
@@ -310,7 +385,8 @@ export default function SeatingChart() {
 
   const hasUnpublishedChanges =
     !tablesEqual(tables, tablesSnapshot) ||
-    !assignmentsEqual(assignments, assignmentsSnapshot)
+    !assignmentsEqual(assignments, assignmentsSnapshot) ||
+    !splitsEqual(splits, splitsSnapshot)
 
   const statCards = [
     { value: allGuests.length, label: 'Attending' },
@@ -332,10 +408,13 @@ export default function SeatingChart() {
     const current = unitTable(unit, assignments)
     return (
       <DropdownPicker<string>
-        current={current === null ? 'Assign' : `Table ${current}`}
+        current={current === null ? 'Assign' : tableDisplayName(current, sortedTables)}
         options={tableOptions}
         hasSelection={current !== null}
-        onSelect={(val) => assignUnit(unit, parseInt(val.replace(/\D/g, ''), 10))}
+        onSelect={(val) => {
+          const idx = tableOptions.indexOf(val)
+          if (idx >= 0) assignUnit(unit, sortedTables[idx].number)
+        }}
         onClear={() => unassignUnit(unit)}
         clearLabel="Unassign"
         ariaLabel="Assign to table"
@@ -355,6 +434,26 @@ export default function SeatingChart() {
         <span className={`flex-1 font-body text-sm font-semibold ${t.bright}`}>
           {unit.label}
         </span>
+        {adminMode && unit.guests.length > 1 && !unit.splitFrom && (
+          <button
+            type="button"
+            onClick={() => splitUnit(unit)}
+            title="Seat each member independently"
+            className={`border ${t.refreshBtn} px-2 py-0.5 font-body text-[10px] uppercase tracking-[0.12em] transition-colors`}
+          >
+            Split
+          </button>
+        )}
+        {adminMode && unit.splitFrom && (
+          <button
+            type="button"
+            onClick={() => mergeUnit(unit)}
+            title="Rejoin this guest with their original unit"
+            className={`border ${t.refreshBtn} px-2 py-0.5 font-body text-[10px] uppercase tracking-[0.12em] transition-colors`}
+          >
+            Merge
+          </button>
+        )}
         {renderPicker(unit)}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
@@ -368,6 +467,13 @@ export default function SeatingChart() {
               {guest.initials}
             </span>
             <span className={`font-body text-sm ${t.bright}`}>{guest.name}</span>
+            {isSponsor(guest.name) && (
+              <span
+                className={`font-body text-[10px] uppercase tracking-[0.12em] ${t.accent}`}
+              >
+                Sponsor
+              </span>
+            )}
             {guest.source === 'plus-one' && (
               <span className={`font-body text-[11px] ${t.faint}`}>+1</span>
             )}
@@ -527,6 +633,17 @@ export default function SeatingChart() {
                 aria-label="Search guests by name"
                 className={`w-full bg-transparent py-2.5 font-body text-base outline-none ${t.input} ${t.placeholder}`}
               />
+              <button
+                type="button"
+                onClick={() => setSponsorsOnly((v) => !v)}
+                aria-pressed={sponsorsOnly}
+                title="Show only principal sponsors"
+                className={`shrink-0 border px-2.5 py-1 font-body text-[10px] uppercase tracking-[0.15em] transition-colors ${
+                  sponsorsOnly ? `${t.flagNote} font-semibold` : t.refreshBtn
+                }`}
+              >
+                Sponsors
+              </button>
             </div>
 
             {/* Tables */}
@@ -536,9 +653,9 @@ export default function SeatingChart() {
               const over = tb.capacity > 0 && fill > tb.capacity
               return (
                 <section key={tb.number} className={`mb-3 ${t.panel}`}>
-                  <div className="flex items-center gap-3 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <h2 className={`flex-1 font-body text-lg font-semibold ${t.bright}`}>
-                      Table {tb.number}
+                      {tableLabelOf(tb)}
                     </h2>
                     <span
                       className={`font-body text-sm ${over ? t.accent : t.muted}`}
@@ -548,6 +665,14 @@ export default function SeatingChart() {
                     </span>
                     {adminMode && (
                       <>
+                        <input
+                          type="text"
+                          value={tb.label ?? ''}
+                          onChange={(e) => renameTable(tb.number, e.target.value)}
+                          placeholder={`Table ${tb.number}`}
+                          aria-label={`Name for Table ${tb.number}`}
+                          className={`w-24 border ${t.panelBorder} bg-transparent px-1.5 py-0.5 font-body text-sm ${t.input} ${t.placeholder}`}
+                        />
                         <label className="flex items-center gap-1">
                           <span className={`font-body text-[10px] uppercase tracking-[0.12em] ${t.dimmed}`}>
                             cap
@@ -564,8 +689,8 @@ export default function SeatingChart() {
                         </label>
                         <button
                           type="button"
-                          onClick={() => removeTable(tb.number)}
-                          aria-label={`Remove Table ${tb.number}`}
+                          onClick={() => removeTable(tb)}
+                          aria-label={`Remove ${tableLabelOf(tb)}`}
                           className={`border ${t.refreshBtn} px-2 py-0.5 font-body text-[10px] uppercase tracking-[0.12em] transition-colors`}
                         >
                           Remove
@@ -624,7 +749,7 @@ export default function SeatingChart() {
                 <div className="px-4 pb-1">{unassignedUnits.map(renderGuestRow)}</div>
               ) : (
                 <p className={`px-4 pb-3 font-body text-xs italic ${t.dimmed}`}>
-                  {q ? 'No matches' : 'Everyone has a seat 🎉'}
+                  {q || sponsorsOnly ? 'No matches' : 'Everyone has a seat 🎉'}
                 </p>
               )}
             </section>
@@ -666,7 +791,7 @@ export default function SeatingChart() {
               return (
                 <div key={tb.number} className="mb-3 break-inside-avoid">
                   <h2 className="text-lg font-semibold">
-                    Table {tb.number}{' '}
+                    {tableLabelOf(tb)}{' '}
                     <span className="text-sm font-normal">
                       ({names.length} / {tb.capacity})
                     </span>
