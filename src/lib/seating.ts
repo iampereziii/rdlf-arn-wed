@@ -254,6 +254,36 @@ export function orphanedAssignments(
     .map(([name, table]) => ({ name, table }))
 }
 
+// --- Receptionist roster ---------------------------------------------------
+
+/** One row of the receptionist roster: a guest and where they sit. `table` is
+ *  null for guests not yet assigned (rendered in the trailing Unassigned block).
+ *  Built from the live unit pool, so orphaned assignments never appear. */
+export type RosterEntry = { name: string; table: number | null; tableLabel: string | null }
+
+/** Every attending guest as a flat `name → table` list sorted alphabetically by
+ *  name — the receptionist's lookup key. Seated guests carry their table's
+ *  display label ("VIP 1" / "Table 3"); unassigned guests carry null. No +1 /
+ *  review / sponsor annotations — name and table only. */
+export function buildRoster(
+  units: SeatUnit[],
+  assignments: Assignments,
+  tables: Table[],
+): RosterEntry[] {
+  const entries: RosterEntry[] = []
+  for (const unit of units) {
+    for (const guest of unit.guests) {
+      const table = assignments[guest.name]
+      if (typeof table === 'number') {
+        entries.push({ name: guest.name, table, tableLabel: tableDisplayName(table, tables) })
+      } else {
+        entries.push({ name: guest.name, table: null, tableLabel: null })
+      }
+    }
+  }
+  return entries.sort((a, b) => a.name.localeCompare(b.name))
+}
+
 // --- Guest-facing lookup ---------------------------------------------------
 
 /** A guest's seating result: the matched name, their table (number + display

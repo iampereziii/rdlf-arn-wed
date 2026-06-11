@@ -5,6 +5,7 @@ import type { GuestSection } from '@/lib/guestData'
 import { loadGuestSections } from '@/lib/guestSheets'
 import {
   assignmentsEqual,
+  buildRoster,
   buildUnits,
   copyToClipboard,
   exportSeatingTSV,
@@ -355,6 +356,14 @@ export default function SeatingChart() {
     () => orphanedAssignments(units, assignments),
     [units, assignments],
   )
+
+  // Receptionist roster (print page 2) — flat name → table list, A→Z by name.
+  const roster = useMemo(
+    () => buildRoster(units, assignments, sortedTables),
+    [units, assignments, sortedTables],
+  )
+  const rosterSeated = useMemo(() => roster.filter((e) => e.table !== null), [roster])
+  const rosterUnassigned = useMemo(() => roster.filter((e) => e.table === null), [roster])
 
   const q = query.trim().toLowerCase()
   const matchesQuery = useCallback(
@@ -800,6 +809,42 @@ export default function SeatingChart() {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* Print page 2 — receptionist roster. Alphabetical name → table for the
+            front desk: a guest gives their name, the attendant reads the table.
+            Plain, high-contrast, name + table only (no +1 / review / sponsor). */}
+        {status === 'live' && (
+          <div className="hidden text-black print:block print:break-before-page">
+            <h1 className="mb-1 text-2xl font-semibold">
+              Jun &amp; Ariane — Guest List
+            </h1>
+            <p className="mb-4 text-sm">Find a guest by name, then their table.</p>
+            <table className="w-full border-collapse text-left text-base">
+              <thead>
+                <tr className="border-b-2 border-black">
+                  <th className="py-1 pr-4 font-semibold">Guest</th>
+                  <th className="py-1 font-semibold">Table</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rosterSeated.map((e) => (
+                  <tr key={e.name} className="border-b border-black/30 break-inside-avoid">
+                    <td className="py-1 pr-4">{e.name}</td>
+                    <td className="py-1 font-semibold">{e.tableLabel}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {rosterUnassigned.length > 0 && (
+              <div className="mt-5 break-inside-avoid">
+                <h2 className="mb-1 text-lg font-semibold">Unassigned</h2>
+                <p className="text-sm">
+                  {rosterUnassigned.map((e) => e.name).join(' · ')}
+                </p>
+              </div>
+            )}
           </div>
         )}
 
