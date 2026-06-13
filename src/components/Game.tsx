@@ -31,12 +31,16 @@ type Heart = {
 // Chance that a spawn is a ring (worth GAME.ringPoints) instead of a heart.
 const RING_CHANCE = 0.1
 // Difficulty ramp: spawn interval and fall duration shrink linearly over the
-// round, clamped at the "max difficulty" values.
-const SPAWN_MS_START = 850
-const SPAWN_MS_END = 380
-const FALL_S_START = 3.2
-const FALL_S_END = 1.6
+// round, clamped at the "max difficulty" values. Tuned for a fast, reflex-led
+// round — see feature-brief--faster-game-challenge.
+const SPAWN_MS_START = 700
+const SPAWN_MS_END = 240
+const FALL_S_START = 2.6
+const FALL_S_END = 1.1
 const COUNTDOWN_TICKS = 3
+// Peak difficulty is reached at this fraction of the round (not the final
+// second), so the hardest stretch is felt while there's still time on the clock.
+const RAMP_COMPLETE_FRACTION = 0.7
 
 const NAME_STORAGE_KEY = 'game-player-name'
 const BEST_STORAGE_KEY = 'game-best-score'
@@ -111,7 +115,8 @@ export default function Game() {
     let timer: ReturnType<typeof setTimeout>
     const spawn = () => {
       const elapsed = Date.now() - startedAt.current
-      const fraction = elapsed / (GAME.durationSeconds * 1000)
+      const fraction =
+        elapsed / (GAME.durationSeconds * 1000) / RAMP_COMPLETE_FRACTION
       const isRing = Math.random() < RING_CHANCE
       setHearts((prev) => [
         ...prev,
